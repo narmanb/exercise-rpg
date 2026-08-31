@@ -18,75 +18,46 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Wire roster formation into battles
+      - name: Connect towns and caves to local maps
         if: github.event_name == 'push' && github.ref == 'refs/heads/party-v1'
         run: |
           python3 - <<'PY'
           from pathlib import Path
 
-          def replace_once(path, old, new):
-              p = Path(path)
-              text = p.read_text()
+          path = Path('app/src/main/java/com/pathofthewild/game/OverworldScreen.kt')
+          text = path.read_text()
+
+          def replace_once(old, new):
+              global text
               if new in text:
                   return
               count = text.count(old)
               if count != 1:
-                  raise SystemExit(f'{path}: expected one match, found {count}: {old[:120]!r}')
-              p.write_text(text.replace(old, new, 1))
+                  raise SystemExit(f'Expected one source match, found {count}: {old[:140]!r}')
+              text = text.replace(old, new, 1)
 
           replace_once(
-              'app/src/main/java/com/pathofthewild/game/PrototypeBattleScreen.kt',
-              '''internal fun PrototypeBattleScreen(\n    modifier: Modifier,\n    encounterName: String,\n    onVictory: (capturedEnemyIds: Set<String>) -> Unit,\n    onRetreat: () -> Unit\n) {''',
-              '''internal fun PrototypeBattleScreen(\n    modifier: Modifier,\n    encounterName: String,\n    protagonistName: String = "Adventurer",\n    protagonistLevel: Int = 1,\n    activeMonsters: List<OwnedMonster> = emptyList(),\n    onVictory: (capturedEnemyIds: Set<String>, bondEligibleMonsterInstanceIds: Set<String>) -> Unit,\n    onRetreat: () -> Unit\n) {'''
-          )
-          replace_once(
-              'app/src/main/java/com/pathofthewild/game/PrototypeBattleScreen.kt',
-              '    val content = remember(encounterName) { PrototypeBattleFactory.create(encounterName) }',
-              '''    val content = remember(encounterName, protagonistName, protagonistLevel, activeMonsters) {\n        RosterBattleFactory.create(encounterName, protagonistName, protagonistLevel, activeMonsters)\n    }'''
-          )
-          replace_once(
-              'app/src/main/java/com/pathofthewild/game/PrototypeBattleScreen.kt',
-              '                    onVictory = { onVictory(state.capturedEnemyIds) },',
-              '''                    onVictory = {\n                        val bondEligible = CombatRules.bondEligibleMonsters(state.combatants)\n                            .mapTo(mutableSetOf()) { it.id }\n                        onVictory(state.capturedEnemyIds, bondEligible)\n                    },'''
+              '    var rosterRevision by remember(characterCreatedAtEpochMs) { mutableIntStateOf(0) }\n\n    val activeParty',
+              '    var rosterRevision by remember(characterCreatedAtEpochMs) { mutableIntStateOf(0) }\n    var activeLocalAreaId by remember(characterCreatedAtEpochMs) { mutableStateOf<String?>(null) }\n\n    val activeParty'
           )
 
           replace_once(
-              'app/src/main/java/com/pathofthewild/game/OverworldScreen.kt',
-              '''internal fun OverworldScreen(\n    modifier: Modifier,\n    adventureAvailable: Long,\n    characterCreatedAtEpochMs: Long\n) {''',
-              '''internal fun OverworldScreen(\n    modifier: Modifier,\n    adventureAvailable: Long,\n    characterCreatedAtEpochMs: Long,\n    protagonistName: String,\n    protagonistLevel: Int\n) {'''
-          )
-          replace_once(
-              'app/src/main/java/com/pathofthewild/game/OverworldScreen.kt',
-              '    var recenterRequest by remember { mutableIntStateOf(0) }\n\n    val currentSight',
-              '''    var recenterRequest by remember { mutableIntStateOf(0) }\n    var rosterRevision by remember(characterCreatedAtEpochMs) { mutableIntStateOf(0) }\n\n    val activeParty = remember(characterCreatedAtEpochMs, rosterRevision) { rosterStore.activeParty() }\n    val currentSight'''
-          )
-          replace_once(
-              'app/src/main/java/com/pathofthewild/game/OverworldScreen.kt',
-              '''        PrototypeBattleScreen(\n            modifier = modifier,\n            encounterName = encounterForBattle.name,\n            onVictory = { capturedEnemyIds ->\n                capturedEnemyIds.forEach { speciesId -> rosterStore.capture(speciesId) }''',
-              '''        PrototypeBattleScreen(\n            modifier = modifier,\n            encounterName = encounterForBattle.name,\n            protagonistName = protagonistName,\n            protagonistLevel = protagonistLevel,\n            activeMonsters = activeParty,\n            onVictory = { capturedEnemyIds, bondEligibleMonsterInstanceIds ->\n                capturedEnemyIds.forEach { speciesId -> rosterStore.capture(speciesId) }\n                bondEligibleMonsterInstanceIds.forEach { instanceId -> rosterStore.addBond(instanceId, 10) }\n                rosterRevision++'''
-          )
-          replace_once(
-              'app/src/main/java/com/pathofthewild/game/OverworldScreen.kt',
-              '                    "${encounterForBattle.name} cleared. Captured monster added to your roster."',
-              '                    "${encounterForBattle.name} cleared. Captured monster added to reserve; conscious companions gained Bond."'
-          )
-          replace_once(
-              'app/src/main/java/com/pathofthewild/game/OverworldScreen.kt',
-              '''        item {\n            OverworldCard {\n                Row(''',
-              '''        item {\n            MonsterRosterPanel(\n                characterCreatedAtEpochMs = characterCreatedAtEpochMs,\n                protagonistLevel = protagonistLevel,\n                refreshKey = rosterRevision,\n                onFormationChanged = { rosterRevision++ }\n            )\n        }\n\n        item {\n            OverworldCard {\n                Row('''
+              '                        PointOfInterestType.Town -> message = "Reached ${poi.name}. Town free-movement interiors come in a later map milestone."\n                        PointOfInterestType.Cave -> message = "Reached ${poi.name}. Dungeon interiors will use free movement once entered."',
+              '''                        PointOfInterestType.Town,\n                        PointOfInterestType.Cave -> {\n                            val localArea = PrototypeLocalAreas.forOverworldPointOfInterest(poi.id)\n                            if (localArea != null) {\n                                activeLocalAreaId = poi.id\n                                message = "Entered ${localArea.name}. Local movement is free."\n                            } else {\n                                message = "Reached ${poi.name}. No local map is connected yet."\n                            }\n                        }'''
           )
 
           replace_once(
-              'app/src/main/java/com/pathofthewild/game/MainActivity.kt',
-              '        Destination.Adventure -> OverworldScreen(modifier, adventureAvailable, profile.createdAtEpochMs)',
-              '        Destination.Adventure -> OverworldScreen(modifier, adventureAvailable, profile.createdAtEpochMs, profile.name, levelProgress.level)'
+              '    val encounterForBattle = activeEncounter\n    if (encounterForBattle != null) {',
+              '''    val activeLocalArea = activeLocalAreaId?.let(PrototypeLocalAreas::forOverworldPointOfInterest)\n    if (activeLocalArea != null) {\n        LocalAreaScreen(\n            modifier = modifier,\n            area = activeLocalArea,\n            onExit = {\n                message = "Returned to the Wilds from ${activeLocalArea.name}."\n                activeLocalAreaId = null\n            }\n        )\n        return\n    }\n\n    val encounterForBattle = activeEncounter\n    if (encounterForBattle != null) {'''
           )
+
+          path.write_text(text)
           PY
-          if ! git diff --quiet -- app/src/main/java/com/pathofthewild/game/PrototypeBattleScreen.kt app/src/main/java/com/pathofthewild/game/OverworldScreen.kt app/src/main/java/com/pathofthewild/game/MainActivity.kt; then
+          if ! git diff --quiet -- app/src/main/java/com/pathofthewild/game/OverworldScreen.kt; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add app/src/main/java/com/pathofthewild/game/PrototypeBattleScreen.kt app/src/main/java/com/pathofthewild/game/OverworldScreen.kt app/src/main/java/com/pathofthewild/game/MainActivity.kt
-            git commit -m "Use captured roster and formation in battles"
+            git add app/src/main/java/com/pathofthewild/game/OverworldScreen.kt
+            git commit -m "Enter free-movement maps from towns and caves"
             git push origin HEAD:party-v1
           fi
 
