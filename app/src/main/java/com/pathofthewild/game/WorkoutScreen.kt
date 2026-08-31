@@ -148,11 +148,6 @@ internal fun WorkoutScreen(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun WorkoutCard(content: @Composable Column.() -> Unit) {
-    // Placeholder overload intentionally avoided; real content card below.
-}
-
-@Composable
 private fun WorkoutCard(content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
         Card(Modifier.widthIn(max = 900.dp).fillMaxWidth()) {
