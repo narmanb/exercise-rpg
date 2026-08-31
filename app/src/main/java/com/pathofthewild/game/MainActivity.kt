@@ -269,6 +269,9 @@ private fun PathOfTheWildApp() {
     val scope = rememberCoroutineScope()
 
     var profile by remember { mutableStateOf(store.loadProfile()) }
+    val fitnessStore = remember { FitnessLedgerStore(context) }
+    var stepLedger by remember { mutableStateOf(fitnessStore.loadStepLedger(profile?.sensorBaseline)) }
+    var rewardLedger by remember { mutableStateOf(fitnessStore.loadRewardLedger()) }
     var destination by remember { mutableStateOf(Destination.Home) }
 
     val readStepsPermission = remember { HealthPermission.getReadPermission(StepsRecord::class) }
@@ -318,6 +321,13 @@ private fun PathOfTheWildApp() {
                 )[StepsRecord.COUNT_TOTAL] ?: 0L
             } else {
                 0L
+            }
+            if (p != null) {
+                val reconciled = StepReconciler.reconcileHealth(stepLedger, healthCharacterSteps)
+                if (reconciled != stepLedger) {
+                    stepLedger = reconciled
+                    fitnessStore.saveStepLedger(reconciled)
+                }
             }
             healthLoaded = true
             healthError = null
@@ -376,19 +386,34 @@ private fun PathOfTheWildApp() {
 
     LaunchedEffect(profile?.createdAtEpochMs, rawSensorSteps) {
         val p = profile ?: return@LaunchedEffect
-        if (p.sensorBaseline == null && rawSensorSteps >= 0f) {
+        if (rawSensorSteps < 0f) return@LaunchedEffect
+        if (p.sensorBaseline == null) {
             store.setSensorBaseline(rawSensorSteps)
             profile = store.loadProfile()
+        }
+        val observed = StepReconciler.observeSensor(stepLedger, rawSensorSteps)
+        if (observed != stepLedger) {
+            stepLedger = observed
+            fitnessStore.saveStepLedger(observed)
+        }
+    }
+
+    LaunchedEffect(profile?.createdAtEpochMs, stepLedger.displayedSteps) {
+        if (profile == null) return@LaunchedEffect
+        val result = FitnessRewardEngine.applyEligibleSteps(rewardLedger, stepLedger.displayedSteps)
+        if (result.state != rewardLedger) {
+            rewardLedger = result.state
+            fitnessStore.saveRewardLedger(result.state)
         }
     }
 
     val sensorDelta = profile?.sensorBaseline?.let { baseline ->
         if (rawSensorSteps >= baseline) (rawSensorSteps - baseline).toLong() else 0L
     } ?: 0L
-    val eligibleSteps = max(healthCharacterSteps, sensorDelta)
-    val walkingXp = RpgProgression.walkingXpFromEligibleSteps(eligibleSteps)
+    val eligibleSteps = stepLedger.displayedSteps
+    val walkingXp = rewardLedger.totalWalkingXpGranted
     val levelProgress = RpgProgression.progress(walkingXp)
-    val adventureEarned = eligibleSteps / FitnessRewardEngine.PROTOTYPE_STEPS_PER_ADVENTURE_POINT
+    val adventureEarned = rewardLedger.totalAdventurePointsGranted
     val adventureAvailable = max(0L, 4L + adventureEarned - store.adventureSpent().toLong())
 
     if (profile == null) {
@@ -406,11 +431,15 @@ private fun PathOfTheWildApp() {
                 }
             },
             onCreate = { name ->
+                val sensorBaseline = rawSensorSteps.takeIf { it >= 0f }
                 profile = store.createProfile(
                     name = name,
                     healthBaseline = if (healthLoaded) healthTodaySteps else null,
-                    sensorBaseline = rawSensorSteps.takeIf { it >= 0f }
+                    sensorBaseline = sensorBaseline
                 )
+                fitnessStore.resetForNewCharacter(sensorBaseline)
+                stepLedger = fitnessStore.loadStepLedger(sensorBaseline)
+                rewardLedger = fitnessStore.loadRewardLedger()
                 scope.launch { refreshHealth() }
             }
         )
@@ -458,6 +487,8 @@ private fun PathOfTheWildApp() {
                         activityPermissionGranted = activityPermissionGranted,
                         rawSensorSteps = rawSensorSteps,
                         sensorDelta = sensorDelta,
+                        stepLedger = stepLedger,
+                        rewardLedger = rewardLedger,
                         store = store,
                         onRequestHealth = {
                             if (healthSdkStatus == HealthConnectClient.SDK_AVAILABLE) {
@@ -506,6 +537,8 @@ private fun PathOfTheWildApp() {
                     activityPermissionGranted = activityPermissionGranted,
                     rawSensorSteps = rawSensorSteps,
                     sensorDelta = sensorDelta,
+                    stepLedger = stepLedger,
+                    rewardLedger = rewardLedger,
                     store = store,
                     onRequestHealth = {
                         if (healthSdkStatus == HealthConnectClient.SDK_AVAILABLE) {
@@ -598,6 +631,8 @@ private fun DestinationContent(
     activityPermissionGranted: Boolean,
     rawSensorSteps: Float,
     sensorDelta: Long,
+    stepLedger: StepLedgerState,
+    rewardLedger: FitnessRewardState,
     store: GameStore,
     onRequestHealth: () -> Unit,
     onRequestActivity: () -> Unit,
@@ -619,6 +654,8 @@ private fun DestinationContent(
             rawSensorSteps = rawSensorSteps,
             sensorDelta = sensorDelta,
             eligibleSteps = eligibleSteps,
+            stepLedger = stepLedger,
+            rewardLedger = rewardLedger,
             profile = profile,
             onRequestHealth = onRequestHealth,
             onRequestActivity = onRequestActivity,
@@ -965,6 +1002,8 @@ private fun DiagnosticsScreen(
     rawSensorSteps: Float,
     sensorDelta: Long,
     eligibleSteps: Long,
+    stepLedger: StepLedgerState,
+    rewardLedger: FitnessRewardState,
     profile: CharacterProfile,
     onRequestHealth: () -> Unit,
     onRequestActivity: () -> Unit,
@@ -986,8 +1025,14 @@ private fun DiagnosticsScreen(
                 DiagnosticLine("Final in-game eligible steps", eligibleSteps.toString())
                 DiagnosticLine("Health Connect — today", healthTodaySteps.toString())
                 DiagnosticLine("Health Connect — since character", healthCharacterSteps.toString())
+                DiagnosticLine("Ledger confirmed Health steps", stepLedger.confirmedHealthSteps.toString())
+                DiagnosticLine("Live unsynced sensor steps", stepLedger.liveUnconfirmedSteps.toString())
+                DiagnosticLine("Rewarded eligible-step watermark", rewardLedger.lastRewardedEligibleSteps.toString())
+                DiagnosticLine("Walking XP granted", rewardLedger.totalWalkingXpGranted.toString())
+                DiagnosticLine("Adventure Points granted", rewardLedger.totalAdventurePointsGranted.toString())
                 DiagnosticLine("Direct sensor raw since boot", if (rawSensorSteps >= 0) rawSensorSteps.toLong().toString() else "Waiting")
                 DiagnosticLine("Direct sensor delta from character baseline", sensorDelta.toString())
+                DiagnosticLine("Sensor reboot epoch", stepLedger.sensorEpoch.toString())
             }
         }
         item {
@@ -1022,7 +1067,7 @@ private fun DiagnosticsScreen(
                 DiagnosticLine("Created", Instant.ofEpochMilli(profile.createdAtEpochMs).toString())
                 DiagnosticLine("Health baseline at creation", profile.healthBaselineToday?.toString() ?: "Not available at creation")
                 DiagnosticLine("Sensor baseline at creation", profile.sensorBaseline?.toLong()?.toString() ?: "Not available at creation")
-                Text("The authoritative long-term sync/reward ledger is the next tracking milestone; this build uses the character timestamp plus the live sensor baseline for safe early testing.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("The persistent reconciliation and reward ledgers are active. Health Connect confirmations consume matching live sensor steps instead of being added twice, and rewarded thresholds are stored separately so restarts cannot replay XP or Adventure Points.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
