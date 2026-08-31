@@ -213,6 +213,9 @@ internal fun OverworldScreen(
         return
     }
 
+    val currentLocalArea = world.pointOfInterestAt(position)
+        ?.let { PrototypeLocalAreas.forOverworldPointOfInterest(it.id) }
+
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -248,6 +251,18 @@ internal fun OverworldScreen(
                     }
                     Spacer(Modifier.size(8.dp))
                     OutlinedButton(onClick = { recenterRequest++ }) { Text("Center") }
+                }
+                if (currentLocalArea != null) {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = {
+                            activeLocalAreaId = currentLocalArea.id
+                            activeLocalPosition = currentLocalArea.start
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Enter ${currentLocalArea.name}")
+                    }
                 }
                 Spacer(Modifier.height(10.dp))
                 WorldMapViewport(
