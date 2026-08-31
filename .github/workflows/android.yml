@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -17,65 +17,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Apply progression UI migration
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('app/src/main/java/com/pathofthewild/game/MainActivity.kt')
-          text = path.read_text()
-          replacements = [
-              (
-                  '    val walkingXp = eligibleSteps / 100L\n    val adventureEarned = eligibleSteps / 500L\n',
-                  '    val walkingXp = RpgProgression.walkingXpFromEligibleSteps(eligibleSteps)\n    val levelProgress = RpgProgression.progress(walkingXp)\n    val adventureEarned = eligibleSteps / FitnessRewardEngine.PROTOTYPE_STEPS_PER_ADVENTURE_POINT\n',
-                  1,
-              ),
-              (
-                  '                        walkingXp = walkingXp,\n                        adventureAvailable = adventureAvailable,',
-                  '                        walkingXp = walkingXp,\n                        levelProgress = levelProgress,\n                        adventureAvailable = adventureAvailable,',
-                  1,
-              ),
-              (
-                  '                    walkingXp = walkingXp,\n                    adventureAvailable = adventureAvailable,',
-                  '                    walkingXp = walkingXp,\n                    levelProgress = levelProgress,\n                    adventureAvailable = adventureAvailable,',
-                  1,
-              ),
-              (
-                  '    walkingXp: Long,\n    adventureAvailable: Long,',
-                  '    walkingXp: Long,\n    levelProgress: LevelProgress,\n    adventureAvailable: Long,',
-                  2,
-              ),
-              (
-                  '        Destination.Home -> HomeScreen(modifier, profile, eligibleSteps, walkingXp, adventureAvailable, store)',
-                  '        Destination.Home -> HomeScreen(modifier, profile, eligibleSteps, walkingXp, levelProgress, adventureAvailable, store)',
-                  1,
-              ),
-              (
-                  '                        Text("Adventurer · Lv 1", color = MaterialTheme.colorScheme.onSurfaceVariant)\n                        Text("Walking XP $walkingXp", fontWeight = FontWeight.SemiBold)',
-                  '                        Text("Adventurer · Lv ${levelProgress.level}", color = MaterialTheme.colorScheme.onSurfaceVariant)\n                        Text("Walking XP $walkingXp", fontWeight = FontWeight.SemiBold)\n                        Text("Level XP ${levelProgress.xpIntoLevel} / ${levelProgress.xpToNextLevel}", color = MaterialTheme.colorScheme.onSurfaceVariant)',
-                  1,
-              ),
-          ]
-          changed = False
-          for old, new, expected in replacements:
-              count = text.count(old)
-              if count == 0 and new in text:
-                  continue
-              if count != expected:
-                  raise SystemExit(f'Expected {expected} match(es), found {count}: {old[:80]!r}')
-              text = text.replace(old, new)
-              changed = True
-          if changed:
-              path.write_text(text)
-          PY
-          if ! git diff --quiet -- app/src/main/java/com/pathofthewild/game/MainActivity.kt; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add app/src/main/java/com/pathofthewild/game/MainActivity.kt
-            git commit -m "Use progression rules in home screen"
-            git push
-          fi
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
