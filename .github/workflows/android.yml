@@ -25,38 +25,39 @@ jobs:
           from pathlib import Path
           path = Path('app/src/main/java/com/pathofthewild/game/OverworldScreen.kt')
           text = path.read_text()
-          marker = '''    LazyColumn(
-        modifier = modifier.fillMaxSize(),'''
-          insertion = '''    val encounterForBattle = activeEncounter
-    if (encounterForBattle != null) {
-        PrototypeBattleScreen(
-            modifier = modifier,
-            encounterName = encounterForBattle.name,
-            onVictory = { capturedEnemyIds ->
-                store.resolvePointOfInterest(encounterForBattle.id)
-                resolvedPoiIds = store.resolvedPointOfInterestIds()
-                message = if (capturedEnemyIds.isNotEmpty()) {
-                    "${encounterForBattle.name} cleared by capture. Captured-monster persistence comes with the roster system."
-                } else {
-                    "${encounterForBattle.name} defeated."
-                }
-                activeEncounter = null
-            },
-            onRetreat = {
-                message = "Retreated from ${encounterForBattle.name}."
-                activeEncounter = null
-            }
-        )
-        return
-    }
-
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),'''
-          if insertion in text:
-              raise SystemExit(0)
-          if text.count(marker) != 1:
-              raise SystemExit(f'Expected one LazyColumn marker, found {text.count(marker)}')
-          path.write_text(text.replace(marker, insertion, 1))
+          marker = "    LazyColumn(\n        modifier = modifier.fillMaxSize(),"
+          lines = [
+              "    val encounterForBattle = activeEncounter",
+              "    if (encounterForBattle != null) {",
+              "        PrototypeBattleScreen(",
+              "            modifier = modifier,",
+              "            encounterName = encounterForBattle.name,",
+              "            onVictory = { capturedEnemyIds ->",
+              "                store.resolvePointOfInterest(encounterForBattle.id)",
+              "                resolvedPoiIds = store.resolvedPointOfInterestIds()",
+              "                message = if (capturedEnemyIds.isNotEmpty()) {",
+              "                    \"${encounterForBattle.name} cleared by capture. Captured-monster persistence comes with the roster system.\"",
+              "                } else {",
+              "                    \"${encounterForBattle.name} defeated.\"",
+              "                }",
+              "                activeEncounter = null",
+              "            },",
+              "            onRetreat = {",
+              "                message = \"Retreated from ${encounterForBattle.name}.\"",
+              "                activeEncounter = null",
+              "            }",
+              "        )",
+              "        return",
+              "    }",
+              "",
+              "    LazyColumn(",
+              "        modifier = modifier.fillMaxSize(),",
+          ]
+          insertion = "\n".join(lines)
+          if "val encounterForBattle = activeEncounter" not in text:
+              if text.count(marker) != 1:
+                  raise SystemExit(f'Expected one LazyColumn marker, found {text.count(marker)}')
+              path.write_text(text.replace(marker, insertion, 1))
           PY
           if ! git diff --quiet -- app/src/main/java/com/pathofthewild/game/OverworldScreen.kt; then
             git config user.name "github-actions[bot]"
