@@ -901,19 +901,49 @@ private fun MapTile(
 
 @Composable
 private fun CaloriesScreen(modifier: Modifier, store: GameStore) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val historyStore = remember { CalorieHistoryStore(context) }
     var entries by remember { mutableStateOf(store.foodEntriesToday()) }
     var target by remember { mutableIntStateOf(store.calorieTarget()) }
     var food by remember { mutableStateOf("") }
     var caloriesText by remember { mutableStateOf("") }
     var targetText by remember { mutableStateOf(target.toString()) }
+    var historyRange by remember { mutableStateOf(CalorieHistoryRange.SevenDays) }
+    var historyRevision by remember { mutableIntStateOf(0) }
     val total = entries.sumOf { it.calories }
+
+    LaunchedEffect(total, entries.size) {
+        if (entries.isNotEmpty()) {
+            historyStore.record(LocalDate.now(), total)
+            historyRevision++
+        }
+    }
+    val history = remember(historyRange, historyRevision) { historyStore.history(historyRange) }
+    val historyAverage = if (history.isEmpty()) 0.0 else history.sumOf { it.calories }.toDouble() / history.size
 
     ScreenColumn(modifier) {
         item {
             ResponsiveCard {
                 Text("Today's Calories", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 Text("$total / $target")
-                Text("Food history will be archived by date; the expanding history graph is a later milestone.")
+                Text("Daily totals are retained by date so the history view grows as you log food.")
+            }
+        }
+        item {
+            ResponsiveCard {
+                Text("Calorie history", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(8.dp))
+                CalorieHistoryRangeSelector(selected = historyRange, onSelected = { historyRange = it })
+                Spacer(Modifier.height(10.dp))
+                if (history.isEmpty()) {
+                    Text("No logged days in this range yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    CalorieHistoryChart(points = history, targetCalories = target)
+                    val firstDay = history.first().date
+                    val lastDay = history.last().date
+                    Text("${history.size} logged day(s) · ${historyAverage.toInt()} calorie average")
+                    Text("$firstDay to $lastDay · target line $target", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
         item {
