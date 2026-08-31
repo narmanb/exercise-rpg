@@ -34,7 +34,12 @@ jobs:
               (
                   '                        walkingXp = walkingXp,\n                        adventureAvailable = adventureAvailable,',
                   '                        walkingXp = walkingXp,\n                        levelProgress = levelProgress,\n                        adventureAvailable = adventureAvailable,',
-                  2,
+                  1,
+              ),
+              (
+                  '                    walkingXp = walkingXp,\n                    adventureAvailable = adventureAvailable,',
+                  '                    walkingXp = walkingXp,\n                    levelProgress = levelProgress,\n                    adventureAvailable = adventureAvailable,',
+                  1,
               ),
               (
                   '    walkingXp: Long,\n    adventureAvailable: Long,',
