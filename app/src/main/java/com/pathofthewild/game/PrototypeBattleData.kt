@@ -49,16 +49,18 @@ internal object PrototypeBattleFactory {
             speed = 24,
             playerSlot = PlayerFormationSlot.North
         )
-        val ashfang = CombatantState(
-            id = "ashfang",
-            name = if (encounterName.contains("River", ignoreCase = true)) "River Stalker" else "Ashfang",
+        val riverEncounter = encounterName.contains("River", ignoreCase = true)
+        val primaryEnemyId = if (riverEncounter) "river_stalker" else "ashfang"
+        val primaryEnemy = CombatantState(
+            id = primaryEnemyId,
+            name = if (riverEncounter) "River Stalker" else "Ashfang",
             side = CombatSide.Enemy,
             kind = CombatantKind.Enemy,
-            maxHp = 360,
-            hp = 360,
-            maxMp = 30,
-            mp = 30,
-            speed = 17
+            maxHp = if (riverEncounter) 380 else 360,
+            hp = if (riverEncounter) 380 else 360,
+            maxMp = if (riverEncounter) 32 else 30,
+            mp = if (riverEncounter) 32 else 30,
+            speed = if (riverEncounter) 18 else 17
         )
         val wisp = CombatantState(
             id = "wisp",
@@ -158,14 +160,14 @@ internal object PrototypeBattleFactory {
         )
 
         return PrototypeBattleContent(
-            initialState = BattleEngine.start(listOf(hero, center, north, ashfang, wisp)),
+            initialState = BattleEngine.start(listOf(hero, center, north, primaryEnemy, wisp)),
             heroAttack = heroAttack,
             heroSkills = listOf(quickSlash, arcBolt),
             heroItem = potion,
             heroDefend = defend,
             heroCapture = capture,
             monsterLoadouts = mapOf(center.id to stonehornLoadout, north.id to voltwingLoadout),
-            enemyTechniques = mapOf(ashfang.id to enemyStrike, wisp.id to wispBolt)
+            enemyTechniques = mapOf(primaryEnemy.id to enemyStrike, wisp.id to wispBolt)
         )
     }
 }
