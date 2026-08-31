@@ -87,8 +87,8 @@ internal object PrototypeLocalAreas {
             },
             objects = listOf(
                 LocalAreaObject("greenrest_exit", exit, LocalObjectType.Exit, "Return to the Wilds"),
-                LocalAreaObject("greenrest_inn", GridPoint(3, 4), LocalObjectType.Inn, "Trailside Inn"),
-                LocalAreaObject("greenrest_shop", GridPoint(10, 4), LocalObjectType.Shop, "Wayfarer Goods"),
+                LocalAreaObject("greenrest_inn", GridPoint(3, 5), LocalObjectType.Inn, "Trailside Inn"),
+                LocalAreaObject("greenrest_shop", GridPoint(10, 5), LocalObjectType.Shop, "Wayfarer Goods"),
                 LocalAreaObject("greenrest_npc_1", GridPoint(6, 6), LocalObjectType.Npc, "Town Scout"),
                 LocalAreaObject("greenrest_waystone", GridPoint(7, 2), LocalObjectType.Landmark, "Greenrest Marker")
             )
