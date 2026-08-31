@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -41,9 +40,13 @@ import androidx.compose.ui.unit.dp
 internal fun LocalAreaScreen(
     modifier: Modifier,
     area: LocalAreaDefinition,
+    position: GridPoint,
+    resolvedObjectIds: Set<String>,
+    onPositionChanged: (GridPoint) -> Unit,
+    onResolveObject: (LocalAreaObject) -> Unit,
+    onEncounter: (LocalAreaObject) -> Unit,
     onExit: () -> Unit
 ) {
-    var position by remember(area.id) { mutableStateOf(area.start) }
     var message by remember(area.id) {
         mutableStateOf("Movement inside ${area.name} is free and does not spend Adventure Points.")
     }
@@ -54,7 +57,7 @@ internal fun LocalAreaScreen(
             message = "That way is blocked."
             return
         }
-        position = target
+        onPositionChanged(target)
         val objectHere = area.objectAt(target)
         message = when (objectHere?.type) {
             LocalObjectType.Exit -> {
@@ -64,8 +67,22 @@ internal fun LocalAreaScreen(
             LocalObjectType.Npc -> "You approach ${objectHere.name}. Dialogue comes in a later content pass."
             LocalObjectType.Shop -> "${objectHere.name}: shop inventory comes in a later RPG pass."
             LocalObjectType.Inn -> "${objectHere.name}: resting/healing will be connected later."
-            LocalObjectType.Chest -> "Found ${objectHere.name}. Chest rewards come with inventory/items."
-            LocalObjectType.Encounter -> "Encounter: ${objectHere.name}. Local-area battle hooks are the next dungeon step."
+            LocalObjectType.Chest -> {
+                if (objectHere.id in resolvedObjectIds) {
+                    "${objectHere.name} is empty."
+                } else {
+                    onResolveObject(objectHere)
+                    "Opened ${objectHere.name}. The chest is now permanently recorded as opened; item rewards will connect with inventory."
+                }
+            }
+            LocalObjectType.Encounter -> {
+                if (objectHere.id in resolvedObjectIds) {
+                    "This part of ${area.name} is clear."
+                } else {
+                    onEncounter(objectHere)
+                    "Encounter: ${objectHere.name}."
+                }
+            }
             LocalObjectType.Landmark -> objectHere.name
             null -> "Moved through ${area.name} for free."
         }
@@ -89,7 +106,7 @@ internal fun LocalAreaScreen(
         item {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    LocalAreaMap(area, position) { target ->
+                    LocalAreaMap(area, position, resolvedObjectIds) { target ->
                         val dx = target.x - position.x
                         val dy = target.y - position.y
                         if (kotlin.math.abs(dx) + kotlin.math.abs(dy) == 1) move(dx, dy)
@@ -110,7 +127,10 @@ internal fun LocalAreaScreen(
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text("Interior movement", fontWeight = FontWeight.Bold)
-                        Text("Walls, water, and rock block movement. Roads/floors/grass/doors are free.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            "Walls, water, and rock block movement. Roads/floors/grass/doors are free. Cleared encounters and opened chests stay cleared for this character.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                     OutlinedButton(onClick = onExit) { Text("Leave") }
                 }
@@ -123,6 +143,7 @@ internal fun LocalAreaScreen(
 private fun LocalAreaMap(
     area: LocalAreaDefinition,
     player: GridPoint,
+    resolvedObjectIds: Set<String>,
     onTileTap: (GridPoint) -> Unit
 ) {
     val horizontal = rememberScrollState()
@@ -141,9 +162,13 @@ private fun LocalAreaMap(
                 Row {
                     repeat(area.width) { x ->
                         val point = GridPoint(x, y)
+                        val objectHere = area.objectAt(point)?.takeUnless { objectHere ->
+                            objectHere.id in resolvedObjectIds &&
+                                objectHere.type in setOf(LocalObjectType.Chest, LocalObjectType.Encounter)
+                        }
                         LocalTile(
                             terrain = area.terrainAt(point),
-                            objectHere = area.objectAt(point),
+                            objectHere = objectHere,
                             isPlayer = point == player,
                             modifier = Modifier.size(tileSize).clickable { onTileTap(point) }
                         )
