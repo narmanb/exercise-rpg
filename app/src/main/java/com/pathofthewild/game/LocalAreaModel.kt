@@ -42,6 +42,8 @@ internal data class LocalAreaDefinition(
         require(inBounds(start))
         require(terrainAt(start).passable)
         require(objects.all { inBounds(it.point) })
+        require(objects.all { terrainAt(it.point).passable })
+        require(objects.map { it.point }.distinct().size == objects.size)
     }
 
     fun inBounds(point: GridPoint): Boolean = point.x in 0 until width && point.y in 0 until height
