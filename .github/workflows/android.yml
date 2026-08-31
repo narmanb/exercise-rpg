@@ -18,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Wire persistent local events and cave battles
+      - name: Add local-area re-entry action
         if: github.event_name == 'push' && github.ref == 'refs/heads/local-events-v1'
         run: |
           python3 - <<'PY'
@@ -37,28 +37,13 @@ jobs:
               text = text.replace(old, new, 1)
 
           replace_once(
-              '    val rosterStore = remember { MonsterRosterStore(context) }\n    val world',
-              '    val rosterStore = remember { MonsterRosterStore(context) }\n    val localProgressStore = remember { LocalAreaProgressStore(context) }\n    val world'
+              '''    LazyColumn(\n        modifier = modifier.fillMaxSize(),''',
+              '''    val currentLocalArea = world.pointOfInterestAt(position)\n        ?.let { PrototypeLocalAreas.forOverworldPointOfInterest(it.id) }\n\n    LazyColumn(\n        modifier = modifier.fillMaxSize(),'''
           )
 
           replace_once(
-              '    rosterStore.ensureCharacter(characterCreatedAtEpochMs)\n\n    var position',
-              '    rosterStore.ensureCharacter(characterCreatedAtEpochMs)\n    localProgressStore.ensureCharacter(characterCreatedAtEpochMs)\n\n    var position'
-          )
-
-          replace_once(
-              '    var activeLocalAreaId by remember(characterCreatedAtEpochMs) { mutableStateOf<String?>(null) }\n\n    val activeParty',
-              '''    var activeLocalAreaId by remember(characterCreatedAtEpochMs) { mutableStateOf<String?>(null) }\n    var activeLocalPosition by remember(characterCreatedAtEpochMs) { mutableStateOf<GridPoint?>(null) }\n    var activeLocalEncounter by remember { mutableStateOf<LocalAreaObject?>(null) }\n    var resolvedLocalObjectIds by remember(characterCreatedAtEpochMs) {\n        mutableStateOf(localProgressStore.resolvedObjectIds())\n    }\n\n    val activeParty'''
-          )
-
-          replace_once(
-              '                                activeLocalAreaId = poi.id\n                                message = "Entered ${localArea.name}. Local movement is free."',
-              '                                activeLocalAreaId = poi.id\n                                activeLocalPosition = localArea.start\n                                message = "Entered ${localArea.name}. Local movement is free."'
-          )
-
-          replace_once(
-              '''    val activeLocalArea = activeLocalAreaId?.let(PrototypeLocalAreas::forOverworldPointOfInterest)\n    if (activeLocalArea != null) {\n        LocalAreaScreen(\n            modifier = modifier,\n            area = activeLocalArea,\n            onExit = {\n                message = "Returned to the Wilds from ${activeLocalArea.name}."\n                activeLocalAreaId = null\n            }\n        )\n        return\n    }\n\n    val encounterForBattle = activeEncounter''',
-              '''    val localEncounterForBattle = activeLocalEncounter\n    if (localEncounterForBattle != null) {\n        PrototypeBattleScreen(\n            modifier = modifier,\n            encounterName = localEncounterForBattle.name,\n            protagonistName = protagonistName,\n            protagonistLevel = protagonistLevel,\n            activeMonsters = activeParty,\n            onVictory = { capturedEnemyIds, bondEligibleMonsterInstanceIds ->\n                capturedEnemyIds.forEach { speciesId -> rosterStore.capture(speciesId) }\n                bondEligibleMonsterInstanceIds.forEach { instanceId -> rosterStore.addBond(instanceId, 10) }\n                rosterRevision++\n                localProgressStore.resolve(localEncounterForBattle.id)\n                resolvedLocalObjectIds = localProgressStore.resolvedObjectIds()\n                activeLocalEncounter = null\n            },\n            onRetreat = { activeLocalEncounter = null }\n        )\n        return\n    }\n\n    val activeLocalArea = activeLocalAreaId?.let(PrototypeLocalAreas::forOverworldPointOfInterest)\n    if (activeLocalArea != null) {\n        LocalAreaScreen(\n            modifier = modifier,\n            area = activeLocalArea,\n            position = activeLocalPosition ?: activeLocalArea.start,\n            resolvedObjectIds = resolvedLocalObjectIds,\n            onPositionChanged = { activeLocalPosition = it },\n            onResolveObject = { objectHere ->\n                localProgressStore.resolve(objectHere.id)\n                resolvedLocalObjectIds = localProgressStore.resolvedObjectIds()\n            },\n            onEncounter = { objectHere -> activeLocalEncounter = objectHere },\n            onExit = {\n                message = "Returned to the Wilds from ${activeLocalArea.name}."\n                activeLocalAreaId = null\n                activeLocalPosition = null\n            }\n        )\n        return\n    }\n\n    val encounterForBattle = activeEncounter'''
+              '''                    OutlinedButton(onClick = { recenterRequest++ }) { Text("Center") }\n                }\n                Spacer(Modifier.height(10.dp))\n                WorldMapViewport(''',
+              '''                    OutlinedButton(onClick = { recenterRequest++ }) { Text("Center") }\n                }\n                if (currentLocalArea != null) {\n                    Spacer(Modifier.height(8.dp))\n                    OutlinedButton(\n                        onClick = {\n                            activeLocalAreaId = currentLocalArea.id\n                            activeLocalPosition = currentLocalArea.start\n                        },\n                        modifier = Modifier.fillMaxWidth()\n                    ) {\n                        Text("Enter ${currentLocalArea.name}")\n                    }\n                }\n                Spacer(Modifier.height(10.dp))\n                WorldMapViewport('''
           )
 
           path.write_text(text)
@@ -67,7 +52,7 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add app/src/main/java/com/pathofthewild/game/OverworldScreen.kt
-            git commit -m "Persist local events and launch cave battles"
+            git commit -m "Allow re-entry from current overworld location"
             git push origin HEAD:local-events-v1
           fi
 
