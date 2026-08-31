@@ -18,52 +18,47 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Connect overworld encounters to battle screen
+      - name: Wire captured species into persistent roster
         if: github.event_name == 'push' && github.ref == 'refs/heads/combat-v1'
         run: |
           python3 - <<'PY'
           from pathlib import Path
           path = Path('app/src/main/java/com/pathofthewild/game/OverworldScreen.kt')
           text = path.read_text()
-          marker = "    LazyColumn(\n        modifier = modifier.fillMaxSize(),"
-          lines = [
-              "    val encounterForBattle = activeEncounter",
-              "    if (encounterForBattle != null) {",
-              "        PrototypeBattleScreen(",
-              "            modifier = modifier,",
-              "            encounterName = encounterForBattle.name,",
-              "            onVictory = { capturedEnemyIds ->",
-              "                store.resolvePointOfInterest(encounterForBattle.id)",
-              "                resolvedPoiIds = store.resolvedPointOfInterestIds()",
-              "                message = if (capturedEnemyIds.isNotEmpty()) {",
-              "                    \"${encounterForBattle.name} cleared by capture. Captured-monster persistence comes with the roster system.\"",
-              "                } else {",
-              "                    \"${encounterForBattle.name} defeated.\"",
-              "                }",
-              "                activeEncounter = null",
-              "            },",
-              "            onRetreat = {",
-              "                message = \"Retreated from ${encounterForBattle.name}.\"",
-              "                activeEncounter = null",
-              "            }",
-              "        )",
-              "        return",
-              "    }",
-              "",
-              "    LazyColumn(",
-              "        modifier = modifier.fillMaxSize(),",
+          replacements = [
+              (
+                  '    val store = remember { OverworldProgressStore(context) }\n    val world = PrototypeOverworld.world',
+                  '    val store = remember { OverworldProgressStore(context) }\n    val rosterStore = remember { MonsterRosterStore(context) }\n    val world = PrototypeOverworld.world',
+              ),
+              (
+                  '    store.ensureCharacter(characterCreatedAtEpochMs)\n\n    var position',
+                  '    store.ensureCharacter(characterCreatedAtEpochMs)\n    rosterStore.ensureCharacter(characterCreatedAtEpochMs)\n\n    var position',
+              ),
+              (
+                  '            onVictory = { capturedEnemyIds ->\n                store.resolvePointOfInterest(encounterForBattle.id)',
+                  '            onVictory = { capturedEnemyIds ->\n                capturedEnemyIds.forEach { speciesId -> rosterStore.capture(speciesId) }\n                store.resolvePointOfInterest(encounterForBattle.id)',
+              ),
+              (
+                  '                    "${encounterForBattle.name} cleared by capture. Captured-monster persistence comes with the roster system."',
+                  '                    "${encounterForBattle.name} cleared. Captured monster added to your roster."',
+              ),
           ]
-          insertion = "\n".join(lines)
-          if "val encounterForBattle = activeEncounter" not in text:
-              if text.count(marker) != 1:
-                  raise SystemExit(f'Expected one LazyColumn marker, found {text.count(marker)}')
-              path.write_text(text.replace(marker, insertion, 1))
+          changed = False
+          for old, new in replacements:
+              if new in text:
+                  continue
+              if text.count(old) != 1:
+                  raise SystemExit(f'Expected one source match, found {text.count(old)} for {old[:100]!r}')
+              text = text.replace(old, new, 1)
+              changed = True
+          if changed:
+              path.write_text(text)
           PY
           if ! git diff --quiet -- app/src/main/java/com/pathofthewild/game/OverworldScreen.kt; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add app/src/main/java/com/pathofthewild/game/OverworldScreen.kt
-            git commit -m "Launch portrait battles from overworld encounters"
+            git commit -m "Persist captured monsters from overworld battles"
             git push origin HEAD:combat-v1
           fi
 
