@@ -18,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Connect towns and caves to local maps
+      - name: Remove obsolete encounter demo
         if: github.event_name == 'push' && github.ref == 'refs/heads/party-v1'
         run: |
           python3 - <<'PY'
@@ -27,29 +27,20 @@ jobs:
           path = Path('app/src/main/java/com/pathofthewild/game/OverworldScreen.kt')
           text = path.read_text()
 
-          def replace_once(old, new):
-              global text
-              if new in text:
-                  return
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f'Expected one source match, found {count}: {old[:140]!r}')
-              text = text.replace(old, new, 1)
+          text = text.replace('import androidx.compose.material3.AlertDialog\n', '')
+          text = text.replace('import androidx.compose.material3.Button\n', '')
+          text = text.replace('import androidx.compose.material3.TextButton\n', '')
+          text = text.replace('    var encounterHp by remember { mutableIntStateOf(90) }\n', '')
+          text = text.replace('                            encounterHp = 90\n', '')
 
-          replace_once(
-              '    var rosterRevision by remember(characterCreatedAtEpochMs) { mutableIntStateOf(0) }\n\n    val activeParty',
-              '    var rosterRevision by remember(characterCreatedAtEpochMs) { mutableIntStateOf(0) }\n    var activeLocalAreaId by remember(characterCreatedAtEpochMs) { mutableStateOf<String?>(null) }\n\n    val activeParty'
-          )
-
-          replace_once(
-              '                        PointOfInterestType.Town -> message = "Reached ${poi.name}. Town free-movement interiors come in a later map milestone."\n                        PointOfInterestType.Cave -> message = "Reached ${poi.name}. Dungeon interiors will use free movement once entered."',
-              '''                        PointOfInterestType.Town,\n                        PointOfInterestType.Cave -> {\n                            val localArea = PrototypeLocalAreas.forOverworldPointOfInterest(poi.id)\n                            if (localArea != null) {\n                                activeLocalAreaId = poi.id\n                                message = "Entered ${localArea.name}. Local movement is free."\n                            } else {\n                                message = "Reached ${poi.name}. No local map is connected yet."\n                            }\n                        }'''
-          )
-
-          replace_once(
-              '    val encounterForBattle = activeEncounter\n    if (encounterForBattle != null) {',
-              '''    val activeLocalArea = activeLocalAreaId?.let(PrototypeLocalAreas::forOverworldPointOfInterest)\n    if (activeLocalArea != null) {\n        LocalAreaScreen(\n            modifier = modifier,\n            area = activeLocalArea,\n            onExit = {\n                message = "Returned to the Wilds from ${activeLocalArea.name}."\n                activeLocalAreaId = null\n            }\n        )\n        return\n    }\n\n    val encounterForBattle = activeEncounter\n    if (encounterForBattle != null) {'''
-          )
+          start_marker = '\n    activeEncounter?.let { encounter ->\n        AlertDialog('
+          end_marker = '\n}\n\n@Composable\nprivate fun OverworldCard'
+          start = text.find(start_marker)
+          if start != -1:
+              end = text.find(end_marker, start)
+              if end == -1:
+                  raise SystemExit('Could not find end of obsolete encounter dialog')
+              text = text[:start] + text[end:]
 
           path.write_text(text)
           PY
@@ -57,7 +48,7 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add app/src/main/java/com/pathofthewild/game/OverworldScreen.kt
-            git commit -m "Enter free-movement maps from towns and caves"
+            git commit -m "Remove obsolete encounter dialog"
             git push origin HEAD:party-v1
           fi
 
