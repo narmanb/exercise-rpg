@@ -35,7 +35,7 @@ internal fun CalorieHistoryRangeSelector(
     }
 
     BoxWithConstraints(modifier.fillMaxWidth()) {
-        if (maxWidth >= 520.dp) {
+        if (ResponsivePolicy.useTwoColumns(maxWidth.value)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 RangeButton(CalorieHistoryRange.SevenDays, "7 days", Modifier.weight(1f))
                 RangeButton(CalorieHistoryRange.ThirtyDays, "30 days", Modifier.weight(1f))
