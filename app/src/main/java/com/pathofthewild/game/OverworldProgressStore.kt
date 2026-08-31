@@ -108,7 +108,7 @@ internal class OverworldProgressStore(context: Context) {
 
     private fun readPointSet(key: String): Set<GridPoint> =
         prefs.getStringSet(key, emptySet())
-            ?.mapNotNullTo(mutableSetOf(), GridPoint::fromKey)
+            ?.mapNotNullTo(mutableSetOf()) { GridPoint.fromKey(it) }
             .orEmpty()
 
     private companion object {
