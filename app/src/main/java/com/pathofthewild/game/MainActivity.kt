@@ -267,9 +267,11 @@ private fun PathOfTheWildTheme(content: @Composable () -> Unit) {
 private fun PathOfTheWildApp() {
     val context = androidx.compose.ui.platform.LocalContext.current
     val store = remember { GameStore(context) }
+    val overworldStore = remember { OverworldProgressStore(context) }
     val scope = rememberCoroutineScope()
 
     var profile by remember { mutableStateOf(store.loadProfile()) }
+    profile?.let { overworldStore.ensureCharacter(it.createdAtEpochMs) }
     val fitnessStore = remember { FitnessLedgerStore(context) }
     var stepLedger by remember { mutableStateOf(fitnessStore.loadStepLedger(profile?.sensorBaseline)) }
     var rewardLedger by remember { mutableStateOf(fitnessStore.loadRewardLedger()) }
@@ -415,7 +417,7 @@ private fun PathOfTheWildApp() {
     val walkingXp = rewardLedger.totalWalkingXpGranted
     val levelProgress = RpgProgression.progress(walkingXp)
     val adventureEarned = rewardLedger.totalAdventurePointsGranted
-    val adventureAvailable = max(0L, 4L + adventureEarned - store.adventureSpent().toLong())
+    val adventureAvailable = max(0L, 4L + adventureEarned - overworldStore.adventureSpent())
 
     if (profile == null) {
         CharacterCreationScreen(
@@ -641,7 +643,7 @@ private fun DestinationContent(
 ) {
     when (destination) {
         Destination.Home -> HomeScreen(modifier, profile, eligibleSteps, walkingXp, levelProgress, adventureAvailable, store)
-        Destination.Adventure -> AdventureScreen(modifier, adventureAvailable, store)
+        Destination.Adventure -> OverworldScreen(modifier, adventureAvailable, profile.createdAtEpochMs)
         Destination.Calories -> CaloriesScreen(modifier, store)
         Destination.Training -> WorkoutScreen(modifier)
         Destination.Diagnostics -> DiagnosticsScreen(
