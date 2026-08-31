@@ -140,6 +140,7 @@ private enum class Destination(val label: String, val short: String) {
     Home("Home", "Home"),
     Adventure("Adventure", "Map"),
     Calories("Calories", "Food"),
+    Training("Training", "Train"),
     Diagnostics("Diagnostics", "Debug")
 }
 
@@ -452,7 +453,7 @@ private fun PathOfTheWildApp() {
             .background(MaterialTheme.colorScheme.background)
             .windowInsetsPadding(WindowInsets.safeDrawing)
     ) {
-        val wide = maxWidth >= 600.dp
+        val wide = ResponsivePolicy.navigationMode(maxWidth.value) == NavigationMode.Rail
         if (wide) {
             Row(Modifier.fillMaxSize()) {
                 NavigationRail(Modifier.fillMaxHeight()) {
@@ -642,6 +643,7 @@ private fun DestinationContent(
         Destination.Home -> HomeScreen(modifier, profile, eligibleSteps, walkingXp, levelProgress, adventureAvailable, store)
         Destination.Adventure -> AdventureScreen(modifier, adventureAvailable, store)
         Destination.Calories -> CaloriesScreen(modifier, store)
+        Destination.Training -> WorkoutScreen(modifier)
         Destination.Diagnostics -> DiagnosticsScreen(
             modifier = modifier,
             healthSdkStatus = healthSdkStatus,
@@ -737,7 +739,7 @@ private fun HomeScreen(
 @Composable
 private fun MetricPair(leftTitle: String, leftValue: String, rightTitle: String, rightValue: String) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        if (maxWidth >= 520.dp) {
+        if (ResponsivePolicy.useTwoColumns(maxWidth.value)) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 MetricCard(leftTitle, leftValue, Modifier.weight(1f))
                 MetricCard(rightTitle, rightValue, Modifier.weight(1f))
@@ -1075,7 +1077,7 @@ private fun DiagnosticsScreen(
                 healthError?.let { DiagnosticLine("Health Connect error", it) }
                 Spacer(Modifier.height(8.dp))
                 BoxWithConstraints(Modifier.fillMaxWidth()) {
-                    if (maxWidth >= 420.dp) {
+                    if (ResponsivePolicy.useCompactActionRow(maxWidth.value)) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(onClick = onRequestHealth, Modifier.weight(1f)) { Text("Health permission") }
                             OutlinedButton(onClick = onRequestActivity, Modifier.weight(1f)) { Text("Sensor permission") }
