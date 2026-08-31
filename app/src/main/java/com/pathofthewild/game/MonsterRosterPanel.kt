@@ -11,12 +11,14 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -32,6 +34,7 @@ internal fun MonsterRosterPanel(
     val context = LocalContext.current
     val store = remember { MonsterRosterStore(context) }
     var roster by remember(characterCreatedAtEpochMs) { mutableStateOf(emptyList<OwnedMonster>()) }
+    var expanded by remember(characterCreatedAtEpochMs) { mutableStateOf(false) }
 
     fun refresh() {
         store.ensureCharacter(characterCreatedAtEpochMs)
@@ -47,18 +50,40 @@ internal fun MonsterRosterPanel(
             Modifier.padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text("Monster roster", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Text(
-                "Captured monsters enter the reserve. Assign any owned monster to North, Center, or South; Center protects the Adventurer from ordinary enemy attacks while conscious.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Monster roster", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        if (roster.isEmpty()) "No monsters captured yet." else "${roster.size} captured · ${roster.count { it.partySlot != null }} active",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (roster.isNotEmpty()) {
+                    TextButton(onClick = { expanded = !expanded }) {
+                        Text(if (expanded) "Hide" else "Manage")
+                    }
+                }
+            }
 
             if (roster.isEmpty()) {
-                Text("No monsters captured yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    "Captured monsters will enter the reserve rather than being forced into a formation slot.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 return@Column
             }
 
             FormationSummary(roster)
+            Text(
+                "Center protects the Adventurer from ordinary enemy attacks while conscious.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            if (!expanded) return@Column
 
             roster.forEach { monster ->
                 val species = MonsterCatalog.get(monster.speciesId) ?: return@forEach
