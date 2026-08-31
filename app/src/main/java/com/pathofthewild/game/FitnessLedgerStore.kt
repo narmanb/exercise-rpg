@@ -12,13 +12,26 @@ import android.content.Context
 internal class FitnessLedgerStore(context: Context) {
     private val prefs = context.getSharedPreferences("path_of_the_wild_save", Context.MODE_PRIVATE)
 
-    fun loadStepLedger(): StepLedgerState = StepLedgerState(
-        confirmedHealthSteps = prefs.getLong(KEY_CONFIRMED_HEALTH, 0L).coerceAtLeast(0L),
-        liveUnconfirmedSteps = prefs.getLong(KEY_LIVE_UNCONFIRMED, 0L).coerceAtLeast(0L),
-        rewardedEligibleSteps = prefs.getLong(KEY_ELIGIBLE_STEPS, 0L).coerceAtLeast(0L),
-        lastSensorRaw = if (prefs.contains(KEY_LAST_SENSOR_RAW)) prefs.getFloat(KEY_LAST_SENSOR_RAW, 0f) else null,
-        sensorEpoch = prefs.getInt(KEY_SENSOR_EPOCH, 0).coerceAtLeast(0)
-    )
+    /**
+     * A pre-ledger prototype character may already have a raw sensor baseline. Seeding lastSensorRaw
+     * from that value lets the first modern observation recover the character-era sensor delta
+     * instead of throwing it away during migration.
+     */
+    fun loadStepLedger(legacySensorBaseline: Float? = null): StepLedgerState {
+        val hasModernLedger = prefs.contains(KEY_ELIGIBLE_STEPS) ||
+            prefs.contains(KEY_CONFIRMED_HEALTH) ||
+            prefs.contains(KEY_LAST_SENSOR_RAW)
+        if (!hasModernLedger) {
+            return StepLedgerState(lastSensorRaw = legacySensorBaseline)
+        }
+        return StepLedgerState(
+            confirmedHealthSteps = prefs.getLong(KEY_CONFIRMED_HEALTH, 0L).coerceAtLeast(0L),
+            liveUnconfirmedSteps = prefs.getLong(KEY_LIVE_UNCONFIRMED, 0L).coerceAtLeast(0L),
+            rewardedEligibleSteps = prefs.getLong(KEY_ELIGIBLE_STEPS, 0L).coerceAtLeast(0L),
+            lastSensorRaw = if (prefs.contains(KEY_LAST_SENSOR_RAW)) prefs.getFloat(KEY_LAST_SENSOR_RAW, 0f) else null,
+            sensorEpoch = prefs.getInt(KEY_SENSOR_EPOCH, 0).coerceAtLeast(0)
+        )
+    }
 
     fun saveStepLedger(state: StepLedgerState) {
         prefs.edit()
