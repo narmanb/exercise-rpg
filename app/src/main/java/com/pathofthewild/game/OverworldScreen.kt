@@ -22,14 +22,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -84,7 +81,6 @@ internal fun OverworldScreen(
         mutableStateOf("Terrain is always visible. Get within ${OverworldRules.SIGHT_RADIUS} tiles to reveal towns, caves, encounters, and landmarks.")
     }
     var activeEncounter by remember { mutableStateOf<PointOfInterest?>(null) }
-    var encounterHp by remember { mutableIntStateOf(90) }
     var recenterRequest by remember { mutableIntStateOf(0) }
     var rosterRevision by remember(characterCreatedAtEpochMs) { mutableIntStateOf(0) }
     var activeLocalAreaId by remember(characterCreatedAtEpochMs) { mutableStateOf<String?>(null) }
@@ -118,7 +114,6 @@ internal fun OverworldScreen(
                 if (poi != null) {
                     when (poi.type) {
                         PointOfInterestType.Encounter -> if (poi.id !in resolvedPoiIds) {
-                            encounterHp = 90
                             activeEncounter = poi
                         }
                         PointOfInterestType.Town,
@@ -246,33 +241,6 @@ internal fun OverworldScreen(
         }
     }
 
-    activeEncounter?.let { encounter ->
-        AlertDialog(
-            onDismissRequest = { activeEncounter = null },
-            title = { Text(encounter.name) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    EncounterMarker(Modifier.size(88.dp).align(Alignment.CenterHorizontally))
-                    Text("Wild encounter · HP $encounterHp / 90")
-                    Text("This remains the temporary encounter loop. The portrait FFX-style battle system is the next RPG combat milestone.")
-                }
-            },
-            confirmButton = {
-                Button(onClick = {
-                    encounterHp = (encounterHp - 30).coerceAtLeast(0)
-                    if (encounterHp == 0) {
-                        store.resolvePointOfInterest(encounter.id)
-                        resolvedPoiIds = store.resolvedPointOfInterestIds()
-                        message = "${encounter.name} defeated."
-                        activeEncounter = null
-                    }
-                }) { Text("Attack") }
-            },
-            dismissButton = {
-                TextButton(onClick = { activeEncounter = null }) { Text("Retreat") }
-            }
-        )
-    }
 }
 
 @Composable
