@@ -98,4 +98,38 @@ class CoreRulesTest {
         assertEquals(3, party.monsters.size)
         party.monsters.forEach { assertEquals(27, it.level) }
     }
+
+    @Test
+    fun fitnessRewardsCrossThresholdsOnce() {
+        var state = FitnessRewardState()
+
+        var result = FitnessRewardEngine.applyEligibleSteps(state, 499L)
+        state = result.state
+        assertEquals(4L, result.walkingXpGranted)
+        assertEquals(0L, result.adventurePointsGranted)
+
+        result = FitnessRewardEngine.applyEligibleSteps(state, 500L)
+        state = result.state
+        assertEquals(1L, result.walkingXpGranted)
+        assertEquals(1L, result.adventurePointsGranted)
+
+        result = FitnessRewardEngine.applyEligibleSteps(state, 500L)
+        assertEquals(0L, result.walkingXpGranted)
+        assertEquals(0L, result.adventurePointsGranted)
+        assertEquals(5L, result.state.totalWalkingXpGranted)
+        assertEquals(1L, result.state.totalAdventurePointsGranted)
+    }
+
+    @Test
+    fun lowerProviderValueCannotMintOrRevokeRewards() {
+        var state = FitnessRewardEngine.applyEligibleSteps(FitnessRewardState(), 1_000L).state
+        val result = FitnessRewardEngine.applyEligibleSteps(state, 900L)
+        state = result.state
+
+        assertEquals(0L, result.walkingXpGranted)
+        assertEquals(0L, result.adventurePointsGranted)
+        assertEquals(1_000L, state.lastRewardedEligibleSteps)
+        assertEquals(10L, state.totalWalkingXpGranted)
+        assertEquals(2L, state.totalAdventurePointsGranted)
+    }
 }
