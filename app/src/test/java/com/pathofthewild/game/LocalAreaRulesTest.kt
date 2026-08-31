@@ -42,4 +42,16 @@ class LocalAreaRulesTest {
             assertTrue(area.terrainAt(exit!!.point).passable)
         }
     }
+
+    @Test
+    fun everyLocalInteractionObjectIsPlacedOnPassableTerrain() {
+        listOf(PrototypeLocalAreas.greenrest, PrototypeLocalAreas.echoCave).forEach { area ->
+            area.objects.forEach { objectHere ->
+                assertTrue(
+                    "${area.name}: ${objectHere.name} must be reachable on a passable tile",
+                    area.terrainAt(objectHere.point).passable
+                )
+            }
+        }
+    }
 }
