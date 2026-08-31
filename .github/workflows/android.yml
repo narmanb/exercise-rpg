@@ -2,7 +2,7 @@ name: Android CI
 
 on:
   push:
-    branches: [ main, overworld-v2 ]
+    branches: [ main, overworld-v2, combat-v1 ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
