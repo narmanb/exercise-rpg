@@ -62,6 +62,7 @@ internal fun OverworldScreen(
     val context = androidx.compose.ui.platform.LocalContext.current
     val store = remember { OverworldProgressStore(context) }
     val rosterStore = remember { MonsterRosterStore(context) }
+    val localProgressStore = remember { LocalAreaProgressStore(context) }
     val world = PrototypeOverworld.world
 
     LaunchedEffect(characterCreatedAtEpochMs) {
@@ -71,6 +72,7 @@ internal fun OverworldScreen(
     // ensureCharacter is idempotent and makes the first composition immediately safe as well.
     store.ensureCharacter(characterCreatedAtEpochMs)
     rosterStore.ensureCharacter(characterCreatedAtEpochMs)
+    localProgressStore.ensureCharacter(characterCreatedAtEpochMs)
 
     var position by remember(characterCreatedAtEpochMs) { mutableStateOf(store.position()) }
     var unlocked by remember(characterCreatedAtEpochMs) { mutableStateOf(store.unlockedTiles()) }
@@ -84,6 +86,11 @@ internal fun OverworldScreen(
     var recenterRequest by remember { mutableIntStateOf(0) }
     var rosterRevision by remember(characterCreatedAtEpochMs) { mutableIntStateOf(0) }
     var activeLocalAreaId by remember(characterCreatedAtEpochMs) { mutableStateOf<String?>(null) }
+    var activeLocalPosition by remember(characterCreatedAtEpochMs) { mutableStateOf<GridPoint?>(null) }
+    var activeLocalEncounter by remember { mutableStateOf<LocalAreaObject?>(null) }
+    var resolvedLocalObjectIds by remember(characterCreatedAtEpochMs) {
+        mutableStateOf(localProgressStore.resolvedObjectIds())
+    }
 
     val activeParty = remember(characterCreatedAtEpochMs, rosterRevision) { rosterStore.activeParty() }
     val currentSight = remember(position) { OverworldRules.visibleTiles(world, position) }
@@ -121,6 +128,7 @@ internal fun OverworldScreen(
                             val localArea = PrototypeLocalAreas.forOverworldPointOfInterest(poi.id)
                             if (localArea != null) {
                                 activeLocalAreaId = poi.id
+                                activeLocalPosition = localArea.start
                                 message = "Entered ${localArea.name}. Local movement is free."
                             } else {
                                 message = "Reached ${poi.name}. No local map is connected yet."
@@ -133,14 +141,44 @@ internal fun OverworldScreen(
         }
     }
 
+    val localEncounterForBattle = activeLocalEncounter
+    if (localEncounterForBattle != null) {
+        PrototypeBattleScreen(
+            modifier = modifier,
+            encounterName = localEncounterForBattle.name,
+            protagonistName = protagonistName,
+            protagonistLevel = protagonistLevel,
+            activeMonsters = activeParty,
+            onVictory = { capturedEnemyIds, bondEligibleMonsterInstanceIds ->
+                capturedEnemyIds.forEach { speciesId -> rosterStore.capture(speciesId) }
+                bondEligibleMonsterInstanceIds.forEach { instanceId -> rosterStore.addBond(instanceId, 10) }
+                rosterRevision++
+                localProgressStore.resolve(localEncounterForBattle.id)
+                resolvedLocalObjectIds = localProgressStore.resolvedObjectIds()
+                activeLocalEncounter = null
+            },
+            onRetreat = { activeLocalEncounter = null }
+        )
+        return
+    }
+
     val activeLocalArea = activeLocalAreaId?.let(PrototypeLocalAreas::forOverworldPointOfInterest)
     if (activeLocalArea != null) {
         LocalAreaScreen(
             modifier = modifier,
             area = activeLocalArea,
+            position = activeLocalPosition ?: activeLocalArea.start,
+            resolvedObjectIds = resolvedLocalObjectIds,
+            onPositionChanged = { activeLocalPosition = it },
+            onResolveObject = { objectHere ->
+                localProgressStore.resolve(objectHere.id)
+                resolvedLocalObjectIds = localProgressStore.resolvedObjectIds()
+            },
+            onEncounter = { objectHere -> activeLocalEncounter = objectHere },
             onExit = {
                 message = "Returned to the Wilds from ${activeLocalArea.name}."
                 activeLocalAreaId = null
+                activeLocalPosition = null
             }
         )
         return
