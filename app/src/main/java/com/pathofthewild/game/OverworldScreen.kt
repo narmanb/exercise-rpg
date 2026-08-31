@@ -62,6 +62,7 @@ internal fun OverworldScreen(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val store = remember { OverworldProgressStore(context) }
+    val rosterStore = remember { MonsterRosterStore(context) }
     val world = PrototypeOverworld.world
 
     LaunchedEffect(characterCreatedAtEpochMs) {
@@ -70,6 +71,7 @@ internal fun OverworldScreen(
 
     // ensureCharacter is idempotent and makes the first composition immediately safe as well.
     store.ensureCharacter(characterCreatedAtEpochMs)
+    rosterStore.ensureCharacter(characterCreatedAtEpochMs)
 
     var position by remember(characterCreatedAtEpochMs) { mutableStateOf(store.position()) }
     var unlocked by remember(characterCreatedAtEpochMs) { mutableStateOf(store.unlockedTiles()) }
@@ -129,10 +131,11 @@ internal fun OverworldScreen(
             modifier = modifier,
             encounterName = encounterForBattle.name,
             onVictory = { capturedEnemyIds ->
+                capturedEnemyIds.forEach { speciesId -> rosterStore.capture(speciesId) }
                 store.resolvePointOfInterest(encounterForBattle.id)
                 resolvedPoiIds = store.resolvedPointOfInterestIds()
                 message = if (capturedEnemyIds.isNotEmpty()) {
-                    "${encounterForBattle.name} cleared by capture. Captured-monster persistence comes with the roster system."
+                    "${encounterForBattle.name} cleared. Captured monster added to your roster."
                 } else {
                     "${encounterForBattle.name} defeated."
                 }
