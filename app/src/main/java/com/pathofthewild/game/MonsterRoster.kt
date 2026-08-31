@@ -46,6 +46,15 @@ internal data class OwnedMonster(
 internal class MonsterRosterStore(context: Context) {
     private val prefs = context.getSharedPreferences("path_of_the_wild_monsters", Context.MODE_PRIVATE)
 
+    fun ensureCharacter(characterCreatedAtEpochMs: Long) {
+        if (prefs.getLong(KEY_CHARACTER_EPOCH, Long.MIN_VALUE) == characterCreatedAtEpochMs) return
+        prefs.edit()
+            .clear()
+            .putLong(KEY_CHARACTER_EPOCH, characterCreatedAtEpochMs)
+            .putString(KEY_ROSTER, "[]")
+            .apply()
+    }
+
     fun loadAll(): List<OwnedMonster> {
         val raw = prefs.getString(KEY_ROSTER, "[]") ?: "[]"
         return runCatching {
@@ -121,8 +130,12 @@ internal class MonsterRosterStore(context: Context) {
         return true
     }
 
-    fun resetForNewCharacter() {
-        prefs.edit().remove(KEY_ROSTER).apply()
+    fun resetForCharacter(characterCreatedAtEpochMs: Long) {
+        prefs.edit()
+            .clear()
+            .putLong(KEY_CHARACTER_EPOCH, characterCreatedAtEpochMs)
+            .putString(KEY_ROSTER, "[]")
+            .apply()
     }
 
     private fun save(roster: List<OwnedMonster>) {
@@ -147,6 +160,7 @@ internal class MonsterRosterStore(context: Context) {
             PlayerFormationSlot.Center,
             PlayerFormationSlot.South
         )
+        private const val KEY_CHARACTER_EPOCH = "character_epoch"
         private const val KEY_ROSTER = "roster"
     }
 }
