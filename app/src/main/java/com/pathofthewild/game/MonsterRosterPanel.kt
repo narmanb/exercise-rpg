@@ -26,7 +26,8 @@ import androidx.compose.ui.unit.dp
 internal fun MonsterRosterPanel(
     characterCreatedAtEpochMs: Long,
     protagonistLevel: Int,
-    refreshKey: Int = 0
+    refreshKey: Int = 0,
+    onFormationChanged: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val store = remember { MonsterRosterStore(context) }
@@ -86,6 +87,7 @@ internal fun MonsterRosterPanel(
                         SlotButtons(monster.partySlot) { slot ->
                             store.assignToParty(monster.instanceId, slot)
                             refresh()
+                            onFormationChanged()
                         }
                     }
                 }
