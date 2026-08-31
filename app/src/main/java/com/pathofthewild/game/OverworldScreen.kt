@@ -123,6 +123,29 @@ internal fun OverworldScreen(
         }
     }
 
+    val encounterForBattle = activeEncounter
+    if (encounterForBattle != null) {
+        PrototypeBattleScreen(
+            modifier = modifier,
+            encounterName = encounterForBattle.name,
+            onVictory = { capturedEnemyIds ->
+                store.resolvePointOfInterest(encounterForBattle.id)
+                resolvedPoiIds = store.resolvedPointOfInterestIds()
+                message = if (capturedEnemyIds.isNotEmpty()) {
+                    "${encounterForBattle.name} cleared by capture. Captured-monster persistence comes with the roster system."
+                } else {
+                    "${encounterForBattle.name} defeated."
+                }
+                activeEncounter = null
+            },
+            onRetreat = {
+                message = "Retreated from ${encounterForBattle.name}."
+                activeEncounter = null
+            }
+        )
+        return
+    }
+
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
