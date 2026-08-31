@@ -2,13 +2,13 @@ name: Android CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, overworld-v2 ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -17,6 +17,55 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Wire scalable overworld screen
+        if: github.event_name == 'push' && github.ref == 'refs/heads/overworld-v2'
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('app/src/main/java/com/pathofthewild/game/MainActivity.kt')
+          text = path.read_text()
+          replacements = [
+              (
+                  '    val store = remember { GameStore(context) }\n    val scope = rememberCoroutineScope()',
+                  '    val store = remember { GameStore(context) }\n    val overworldStore = remember { OverworldProgressStore(context) }\n    val scope = rememberCoroutineScope()',
+                  1,
+              ),
+              (
+                  '    var profile by remember { mutableStateOf(store.loadProfile()) }\n    val fitnessStore = remember { FitnessLedgerStore(context) }',
+                  '    var profile by remember { mutableStateOf(store.loadProfile()) }\n    profile?.let { overworldStore.ensureCharacter(it.createdAtEpochMs) }\n    val fitnessStore = remember { FitnessLedgerStore(context) }',
+                  1,
+              ),
+              (
+                  '    val adventureAvailable = max(0L, 4L + adventureEarned - store.adventureSpent().toLong())',
+                  '    val adventureAvailable = max(0L, 4L + adventureEarned - overworldStore.adventureSpent())',
+                  1,
+              ),
+              (
+                  '        Destination.Adventure -> AdventureScreen(modifier, adventureAvailable, store)',
+                  '        Destination.Adventure -> OverworldScreen(modifier, adventureAvailable, profile.createdAtEpochMs)',
+                  1,
+              ),
+          ]
+          changed = False
+          for old, new, expected in replacements:
+              count = text.count(old)
+              if count == 0 and new in text:
+                  continue
+              if count != expected:
+                  raise SystemExit(f'Expected {expected} match(es), found {count}: {old[:120]!r}')
+              text = text.replace(old, new)
+              changed = True
+          if changed:
+              path.write_text(text)
+          PY
+          if ! git diff --quiet -- app/src/main/java/com/pathofthewild/game/MainActivity.kt; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add app/src/main/java/com/pathofthewild/game/MainActivity.kt
+            git commit -m "Switch Adventure tab to scalable overworld"
+            git push origin HEAD:overworld-v2
+          fi
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
