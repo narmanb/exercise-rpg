@@ -58,7 +58,9 @@ import kotlin.math.max
 internal fun OverworldScreen(
     modifier: Modifier,
     adventureAvailable: Long,
-    characterCreatedAtEpochMs: Long
+    characterCreatedAtEpochMs: Long,
+    protagonistName: String,
+    protagonistLevel: Int
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val store = remember { OverworldProgressStore(context) }
@@ -84,7 +86,9 @@ internal fun OverworldScreen(
     var activeEncounter by remember { mutableStateOf<PointOfInterest?>(null) }
     var encounterHp by remember { mutableIntStateOf(90) }
     var recenterRequest by remember { mutableIntStateOf(0) }
+    var rosterRevision by remember(characterCreatedAtEpochMs) { mutableIntStateOf(0) }
 
+    val activeParty = remember(characterCreatedAtEpochMs, rosterRevision) { rosterStore.activeParty() }
     val currentSight = remember(position) { OverworldRules.visibleTiles(world, position) }
 
     fun refreshFromStore() {
@@ -130,12 +134,17 @@ internal fun OverworldScreen(
         PrototypeBattleScreen(
             modifier = modifier,
             encounterName = encounterForBattle.name,
-            onVictory = { capturedEnemyIds ->
+            protagonistName = protagonistName,
+            protagonistLevel = protagonistLevel,
+            activeMonsters = activeParty,
+            onVictory = { capturedEnemyIds, bondEligibleMonsterInstanceIds ->
                 capturedEnemyIds.forEach { speciesId -> rosterStore.capture(speciesId) }
+                bondEligibleMonsterInstanceIds.forEach { instanceId -> rosterStore.addBond(instanceId, 10) }
+                rosterRevision++
                 store.resolvePointOfInterest(encounterForBattle.id)
                 resolvedPoiIds = store.resolvedPointOfInterestIds()
                 message = if (capturedEnemyIds.isNotEmpty()) {
-                    "${encounterForBattle.name} cleared. Captured monster added to your roster."
+                    "${encounterForBattle.name} cleared. Captured monster added to reserve; conscious companions gained Bond."
                 } else {
                     "${encounterForBattle.name} defeated."
                 }
@@ -160,6 +169,15 @@ internal fun OverworldScreen(
                 Text("Adventure Points available: $remainingAdventure")
                 Text("The prototype world is now ${world.width}×${world.height}. Pan the map freely; movement itself is still one cardinal tile at a time.")
             }
+        }
+
+        item {
+            MonsterRosterPanel(
+                characterCreatedAtEpochMs = characterCreatedAtEpochMs,
+                protagonistLevel = protagonistLevel,
+                refreshKey = rosterRevision,
+                onFormationChanged = { rosterRevision++ }
+            )
         }
 
         item {

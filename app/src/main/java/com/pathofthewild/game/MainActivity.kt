@@ -643,7 +643,7 @@ private fun DestinationContent(
 ) {
     when (destination) {
         Destination.Home -> HomeScreen(modifier, profile, eligibleSteps, walkingXp, levelProgress, adventureAvailable, store)
-        Destination.Adventure -> OverworldScreen(modifier, adventureAvailable, profile.createdAtEpochMs)
+        Destination.Adventure -> OverworldScreen(modifier, adventureAvailable, profile.createdAtEpochMs, profile.name, levelProgress.level)
         Destination.Calories -> CaloriesScreen(modifier, store)
         Destination.Training -> WorkoutScreen(modifier)
         Destination.Diagnostics -> DiagnosticsScreen(

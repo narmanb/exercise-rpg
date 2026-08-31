@@ -48,10 +48,15 @@ import kotlinx.coroutines.delay
 internal fun PrototypeBattleScreen(
     modifier: Modifier,
     encounterName: String,
-    onVictory: (capturedEnemyIds: Set<String>) -> Unit,
+    protagonistName: String = "Adventurer",
+    protagonistLevel: Int = 1,
+    activeMonsters: List<OwnedMonster> = emptyList(),
+    onVictory: (capturedEnemyIds: Set<String>, bondEligibleMonsterInstanceIds: Set<String>) -> Unit,
     onRetreat: () -> Unit
 ) {
-    val content = remember(encounterName) { PrototypeBattleFactory.create(encounterName) }
+    val content = remember(encounterName, protagonistName, protagonistLevel, activeMonsters) {
+        RosterBattleFactory.create(encounterName, protagonistName, protagonistLevel, activeMonsters)
+    }
     var state by remember(encounterName) { mutableStateOf(content.initialState) }
     var pendingTechnique by remember { mutableStateOf<CombatTechnique?>(null) }
     var showingHeroSkills by remember { mutableStateOf(false) }
@@ -172,7 +177,11 @@ internal fun PrototypeBattleScreen(
             } else {
                 BattleResultPanel(
                     state = state,
-                    onVictory = { onVictory(state.capturedEnemyIds) },
+                    onVictory = {
+                        val bondEligible = CombatRules.bondEligibleMonsters(state.combatants)
+                            .mapTo(mutableSetOf()) { it.id }
+                        onVictory(state.capturedEnemyIds, bondEligible)
+                    },
                     onRetreat = onRetreat
                 )
             }
