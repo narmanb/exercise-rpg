@@ -386,8 +386,9 @@ private fun PathOfTheWildApp() {
         if (rawSensorSteps >= baseline) (rawSensorSteps - baseline).toLong() else 0L
     } ?: 0L
     val eligibleSteps = max(healthCharacterSteps, sensorDelta)
-    val walkingXp = eligibleSteps / 100L
-    val adventureEarned = eligibleSteps / 500L
+    val walkingXp = RpgProgression.walkingXpFromEligibleSteps(eligibleSteps)
+    val levelProgress = RpgProgression.progress(walkingXp)
+    val adventureEarned = eligibleSteps / FitnessRewardEngine.PROTOTYPE_STEPS_PER_ADVENTURE_POINT
     val adventureAvailable = max(0L, 4L + adventureEarned - store.adventureSpent().toLong())
 
     if (profile == null) {
@@ -446,6 +447,7 @@ private fun PathOfTheWildApp() {
                         profile = profile!!,
                         eligibleSteps = eligibleSteps,
                         walkingXp = walkingXp,
+                        levelProgress = levelProgress,
                         adventureAvailable = adventureAvailable,
                         healthSdkStatus = healthSdkStatus,
                         healthPermissionGranted = healthPermissionGranted,
@@ -493,6 +495,7 @@ private fun PathOfTheWildApp() {
                     profile = profile!!,
                     eligibleSteps = eligibleSteps,
                     walkingXp = walkingXp,
+                    levelProgress = levelProgress,
                     adventureAvailable = adventureAvailable,
                     healthSdkStatus = healthSdkStatus,
                     healthPermissionGranted = healthPermissionGranted,
@@ -584,6 +587,7 @@ private fun DestinationContent(
     profile: CharacterProfile,
     eligibleSteps: Long,
     walkingXp: Long,
+    levelProgress: LevelProgress,
     adventureAvailable: Long,
     healthSdkStatus: Int,
     healthPermissionGranted: Boolean,
@@ -600,7 +604,7 @@ private fun DestinationContent(
     onRefreshHealth: () -> Unit
 ) {
     when (destination) {
-        Destination.Home -> HomeScreen(modifier, profile, eligibleSteps, walkingXp, adventureAvailable, store)
+        Destination.Home -> HomeScreen(modifier, profile, eligibleSteps, walkingXp, levelProgress, adventureAvailable, store)
         Destination.Adventure -> AdventureScreen(modifier, adventureAvailable, store)
         Destination.Calories -> CaloriesScreen(modifier, store)
         Destination.Diagnostics -> DiagnosticsScreen(
@@ -639,6 +643,7 @@ private fun HomeScreen(
     profile: CharacterProfile,
     eligibleSteps: Long,
     walkingXp: Long,
+    levelProgress: LevelProgress,
     adventureAvailable: Long,
     store: GameStore
 ) {
@@ -651,8 +656,9 @@ private fun HomeScreen(
                     HumanoidGlyph(Modifier.size(74.dp))
                     Column(Modifier.weight(1f)) {
                         Text(profile.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                        Text("Adventurer · Lv 1", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Adventurer · Lv ${levelProgress.level}", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text("Walking XP $walkingXp", fontWeight = FontWeight.SemiBold)
+                        Text("Level XP ${levelProgress.xpIntoLevel} / ${levelProgress.xpToNextLevel}", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
