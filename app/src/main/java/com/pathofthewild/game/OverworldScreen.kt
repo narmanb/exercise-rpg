@@ -87,6 +87,7 @@ internal fun OverworldScreen(
     var encounterHp by remember { mutableIntStateOf(90) }
     var recenterRequest by remember { mutableIntStateOf(0) }
     var rosterRevision by remember(characterCreatedAtEpochMs) { mutableIntStateOf(0) }
+    var activeLocalAreaId by remember(characterCreatedAtEpochMs) { mutableStateOf<String?>(null) }
 
     val activeParty = remember(characterCreatedAtEpochMs, rosterRevision) { rosterStore.activeParty() }
     val currentSight = remember(position) { OverworldRules.visibleTiles(world, position) }
@@ -120,13 +121,34 @@ internal fun OverworldScreen(
                             encounterHp = 90
                             activeEncounter = poi
                         }
-                        PointOfInterestType.Town -> message = "Reached ${poi.name}. Town free-movement interiors come in a later map milestone."
-                        PointOfInterestType.Cave -> message = "Reached ${poi.name}. Dungeon interiors will use free movement once entered."
+                        PointOfInterestType.Town,
+                        PointOfInterestType.Cave -> {
+                            val localArea = PrototypeLocalAreas.forOverworldPointOfInterest(poi.id)
+                            if (localArea != null) {
+                                activeLocalAreaId = poi.id
+                                message = "Entered ${localArea.name}. Local movement is free."
+                            } else {
+                                message = "Reached ${poi.name}. No local map is connected yet."
+                            }
+                        }
                         PointOfInterestType.Landmark -> message = "Reached ${poi.name}."
                     }
                 }
             }
         }
+    }
+
+    val activeLocalArea = activeLocalAreaId?.let(PrototypeLocalAreas::forOverworldPointOfInterest)
+    if (activeLocalArea != null) {
+        LocalAreaScreen(
+            modifier = modifier,
+            area = activeLocalArea,
+            onExit = {
+                message = "Returned to the Wilds from ${activeLocalArea.name}."
+                activeLocalAreaId = null
+            }
+        )
+        return
     }
 
     val encounterForBattle = activeEncounter
