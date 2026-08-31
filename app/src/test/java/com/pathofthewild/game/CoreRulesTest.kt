@@ -81,4 +81,21 @@ class CoreRulesTest {
         assertEquals(2_100L, state.rewardedEligibleSteps)
         assertEquals(2_100L, state.displayedSteps)
     }
+
+    @Test
+    fun activePartyUsesThreeMonstersAndSynchronizesTheirLevels() {
+        val protagonist = ProtagonistState(name = "Ari", level = 27, totalXp = 9_999L)
+        val monsters = listOf(
+            MonsterCompanion("m1", "wolf", level = 3, isActive = true),
+            MonsterCompanion("m2", "slime", level = 99, isActive = true),
+            MonsterCompanion("m3", "moth", level = 1, isActive = true),
+            MonsterCompanion("m4", "beetle", level = 12, isActive = true)
+        )
+
+        val party = PartyRules.activeParty(protagonist, monsters)
+
+        assertEquals(PartyRules.MAX_ACTIVE_PARTY_SIZE, party.size)
+        assertEquals(3, party.monsters.size)
+        party.monsters.forEach { assertEquals(27, it.level) }
+    }
 }
