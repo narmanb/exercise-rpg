@@ -65,7 +65,7 @@ internal fun WorkoutScreen(modifier: Modifier = Modifier) {
                 WorkoutCategorySelector(category, onSelected = { category = it })
                 Spacer(Modifier.height(10.dp))
                 BoxWithConstraints(Modifier.fillMaxWidth()) {
-                    if (maxWidth >= 520.dp) {
+                    if (ResponsivePolicy.useTwoColumns(maxWidth.value)) {
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             OutlinedTextField(
                                 value = minutesText,
@@ -171,7 +171,7 @@ private fun WorkoutCategorySelector(
     }
 
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        if (maxWidth >= 720.dp) {
+        if (ResponsivePolicy.useFiveButtonRow(maxWidth.value)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 WorkoutCategory.entries.forEach { item -> CategoryButton(item, Modifier.weight(1f)) }
             }
