@@ -40,9 +40,11 @@ internal fun WorkoutScreen(modifier: Modifier = Modifier) {
     val store = remember { WorkoutStore(context) }
     var history by remember { mutableStateOf(store.history()) }
     var category by remember { mutableStateOf(WorkoutCategory.Strength) }
+    var nameText by remember { mutableStateOf("") }
     var minutesText by remember { mutableStateOf("") }
     var effortText by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
+    val recentTemplates = remember(history) { WorkoutQuickReuseRules.recentTemplates(history) }
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -58,9 +60,51 @@ internal fun WorkoutScreen(modifier: Modifier = Modifier) {
                 )
             }
         }
+        if (recentTemplates.isNotEmpty()) {
+            item {
+                WorkoutCard {
+                    Text("Quick reuse", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Refill the form from a recent exercise or session, then change anything that is different today.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    recentTemplates.forEachIndexed { index, entry ->
+                        if (index > 0) Spacer(Modifier.height(6.dp))
+                        OutlinedButton(
+                            onClick = {
+                                category = entry.category
+                                nameText = entry.name
+                                minutesText = entry.minutes.toString()
+                                effortText = entry.effort?.toString().orEmpty()
+                                note = entry.note
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(Modifier.fillMaxWidth()) {
+                                Text(entry.displayName, fontWeight = FontWeight.SemiBold)
+                                val effortSuffix = entry.effort?.let { " · effort $it/10" }.orEmpty()
+                                Text(
+                                    "${entry.category.label} · ${entry.minutes} min$effortSuffix",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
         item {
             WorkoutCard {
                 Text("New workout", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = nameText,
+                    onValueChange = { nameText = it.take(WorkoutQuickReuseRules.MAX_NAME_LENGTH) },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Exercise / session name (optional)") },
+                    singleLine = true
+                )
                 Spacer(Modifier.height(10.dp))
                 WorkoutCategorySelector(category, onSelected = { category = it })
                 Spacer(Modifier.height(10.dp))
@@ -119,8 +163,15 @@ internal fun WorkoutScreen(modifier: Modifier = Modifier) {
                     onClick = {
                         val minutes = minutesText.toIntOrNull()?.coerceIn(1, 1440) ?: return@Button
                         val effort = effortText.toIntOrNull()?.coerceIn(1, 10)
-                        store.add(category, minutes, effort, note)
+                        store.add(
+                            category = category,
+                            minutes = minutes,
+                            effort = effort,
+                            note = note,
+                            name = nameText
+                        )
                         history = store.history()
+                        nameText = ""
                         minutesText = ""
                         effortText = ""
                         note = ""
@@ -195,10 +246,15 @@ private fun WorkoutCategorySelector(
 private fun WorkoutHistoryRow(entry: WorkoutEntry) {
     val formatter = remember { DateTimeFormatter.ofPattern("MMM d, yyyy · h:mm a") }
     val whenText = entry.performedAt.atZone(ZoneId.systemDefault()).format(formatter)
+    val summary = if (entry.name.isBlank()) {
+        "${entry.minutes} min"
+    } else {
+        "${entry.category.label} · ${entry.minutes} min"
+    }
     Column {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(entry.category.label, fontWeight = FontWeight.SemiBold)
-            Text("${entry.minutes} min")
+            Text(entry.displayName, fontWeight = FontWeight.SemiBold)
+            Text(summary)
         }
         Text(whenText, color = MaterialTheme.colorScheme.onSurfaceVariant)
         entry.effort?.let { Text("Effort $it/10", color = MaterialTheme.colorScheme.onSurfaceVariant) }
