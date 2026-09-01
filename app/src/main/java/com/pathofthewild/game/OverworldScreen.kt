@@ -63,6 +63,7 @@ internal fun OverworldScreen(
     val store = remember { OverworldProgressStore(context) }
     val rosterStore = remember { MonsterRosterStore(context) }
     val localProgressStore = remember { LocalAreaProgressStore(context) }
+    val inventoryStore = remember { InventoryStore(context) }
     val world = PrototypeOverworld.world
 
     LaunchedEffect(characterCreatedAtEpochMs) {
@@ -73,6 +74,7 @@ internal fun OverworldScreen(
     store.ensureCharacter(characterCreatedAtEpochMs)
     rosterStore.ensureCharacter(characterCreatedAtEpochMs)
     localProgressStore.ensureCharacter(characterCreatedAtEpochMs)
+    inventoryStore.ensureCharacter(characterCreatedAtEpochMs)
 
     var position by remember(characterCreatedAtEpochMs) { mutableStateOf(store.position()) }
     var unlocked by remember(characterCreatedAtEpochMs) { mutableStateOf(store.unlockedTiles()) }
@@ -85,14 +87,17 @@ internal fun OverworldScreen(
     var activeEncounter by remember { mutableStateOf<PointOfInterest?>(null) }
     var recenterRequest by remember { mutableIntStateOf(0) }
     var rosterRevision by remember(characterCreatedAtEpochMs) { mutableIntStateOf(0) }
+    var inventoryRevision by remember(characterCreatedAtEpochMs) { mutableIntStateOf(0) }
     var activeLocalAreaId by remember(characterCreatedAtEpochMs) { mutableStateOf<String?>(null) }
     var activeLocalPosition by remember(characterCreatedAtEpochMs) { mutableStateOf<GridPoint?>(null) }
     var activeLocalEncounter by remember { mutableStateOf<LocalAreaObject?>(null) }
+    var activeShop by remember { mutableStateOf<LocalAreaObject?>(null) }
     var resolvedLocalObjectIds by remember(characterCreatedAtEpochMs) {
         mutableStateOf(localProgressStore.resolvedObjectIds())
     }
 
     val activeParty = remember(characterCreatedAtEpochMs, rosterRevision) { rosterStore.activeParty() }
+    val inventory = remember(characterCreatedAtEpochMs, inventoryRevision) { inventoryStore.load() }
     val currentSight = remember(position) { OverworldRules.visibleTiles(world, position) }
 
     fun refreshFromStore() {
@@ -100,6 +105,16 @@ internal fun OverworldScreen(
         unlocked = store.unlockedTiles()
         discovered = store.discoveredTiles()
         resolvedPoiIds = store.resolvedPointOfInterestIds()
+    }
+
+    fun consumeFieldTonic(): Boolean {
+        return when (inventoryStore.consume(ItemCatalog.fieldTonic.id)) {
+            is InventoryTransaction.Rejected -> false
+            is InventoryTransaction.Success -> {
+                inventoryRevision++
+                true
+            }
+        }
     }
 
     fun moveTo(point: GridPoint) {
@@ -149,15 +164,32 @@ internal fun OverworldScreen(
             protagonistName = protagonistName,
             protagonistLevel = protagonistLevel,
             activeMonsters = activeParty,
+            fieldTonicCount = inventory.quantity(ItemCatalog.fieldTonic.id),
+            onConsumeFieldTonic = ::consumeFieldTonic,
             onVictory = { capturedEnemyIds, bondEligibleMonsterInstanceIds ->
                 capturedEnemyIds.forEach { speciesId -> rosterStore.capture(speciesId) }
                 bondEligibleMonsterInstanceIds.forEach { instanceId -> rosterStore.addBond(instanceId, 10) }
                 rosterRevision++
+                val reward = RewardRules.battleVictoryReward(protagonistLevel, localEncounter = true)
+                inventoryStore.applyReward(reward)
+                inventoryRevision++
                 localProgressStore.resolve(localEncounterForBattle.id)
                 resolvedLocalObjectIds = localProgressStore.resolvedObjectIds()
                 activeLocalEncounter = null
             },
             onRetreat = { activeLocalEncounter = null }
+        )
+        return
+    }
+
+    val shopForScreen = activeShop
+    if (shopForScreen != null) {
+        ShopScreen(
+            modifier = modifier,
+            characterCreatedAtEpochMs = characterCreatedAtEpochMs,
+            shopName = shopForScreen.name,
+            onInventoryChanged = { inventoryRevision++ },
+            onLeave = { activeShop = null }
         )
         return
     }
@@ -171,10 +203,15 @@ internal fun OverworldScreen(
             resolvedObjectIds = resolvedLocalObjectIds,
             onPositionChanged = { activeLocalPosition = it },
             onResolveObject = { objectHere ->
+                val reward = RewardRules.localObjectReward(objectHere.id)
+                inventoryStore.applyReward(reward)
+                inventoryRevision++
                 localProgressStore.resolve(objectHere.id)
                 resolvedLocalObjectIds = localProgressStore.resolvedObjectIds()
+                "Opened ${objectHere.name}. Found ${reward.describe()}."
             },
             onEncounter = { objectHere -> activeLocalEncounter = objectHere },
+            onShop = { objectHere -> activeShop = objectHere },
             onExit = {
                 message = "Returned to the Wilds from ${activeLocalArea.name}."
                 activeLocalAreaId = null
@@ -192,16 +229,21 @@ internal fun OverworldScreen(
             protagonistName = protagonistName,
             protagonistLevel = protagonistLevel,
             activeMonsters = activeParty,
+            fieldTonicCount = inventory.quantity(ItemCatalog.fieldTonic.id),
+            onConsumeFieldTonic = ::consumeFieldTonic,
             onVictory = { capturedEnemyIds, bondEligibleMonsterInstanceIds ->
                 capturedEnemyIds.forEach { speciesId -> rosterStore.capture(speciesId) }
                 bondEligibleMonsterInstanceIds.forEach { instanceId -> rosterStore.addBond(instanceId, 10) }
                 rosterRevision++
+                val reward = RewardRules.battleVictoryReward(protagonistLevel, localEncounter = false)
+                inventoryStore.applyReward(reward)
+                inventoryRevision++
                 store.resolvePointOfInterest(encounterForBattle.id)
                 resolvedPoiIds = store.resolvedPointOfInterestIds()
                 message = if (capturedEnemyIds.isNotEmpty()) {
-                    "${encounterForBattle.name} cleared. Captured monster added to reserve; conscious companions gained Bond."
+                    "${encounterForBattle.name} cleared. Captured monster added to reserve; conscious companions gained Bond. Reward: ${reward.describe()}."
                 } else {
-                    "${encounterForBattle.name} defeated."
+                    "${encounterForBattle.name} defeated. Reward: ${reward.describe()}."
                 }
                 activeEncounter = null
             },
@@ -235,6 +277,13 @@ internal fun OverworldScreen(
                 protagonistLevel = protagonistLevel,
                 refreshKey = rosterRevision,
                 onFormationChanged = { rosterRevision++ }
+            )
+        }
+
+        item {
+            InventoryPanel(
+                characterCreatedAtEpochMs = characterCreatedAtEpochMs,
+                refreshKey = inventoryRevision
             )
         }
 

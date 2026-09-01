@@ -182,10 +182,10 @@ internal object RosterBattleFactory {
         )
         val potion = CombatTechnique(
             id = "potion",
-            name = "Field Tonic",
+            name = ItemCatalog.fieldTonic.name,
             kind = CombatActionKind.Heal,
             targetMode = CombatTargetMode.AllySingle,
-            power = 70 + (level - 1) * 3,
+            power = ItemCatalog.fieldTonic.power,
             actionDelay = 90
         )
         val defend = CombatTechnique(

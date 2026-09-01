@@ -51,6 +51,8 @@ internal fun PrototypeBattleScreen(
     protagonistName: String = "Adventurer",
     protagonistLevel: Int = 1,
     activeMonsters: List<OwnedMonster> = emptyList(),
+    fieldTonicCount: Int = 0,
+    onConsumeFieldTonic: () -> Boolean = { false },
     onVictory: (capturedEnemyIds: Set<String>, bondEligibleMonsterInstanceIds: Set<String>) -> Unit,
     onRetreat: () -> Unit
 ) {
@@ -86,6 +88,7 @@ internal fun PrototypeBattleScreen(
     fun chooseTechnique(technique: CombatTechnique) {
         val actor = state.activeCombatant() ?: return
         if (!CombatRules.canPayMp(actor, technique)) return
+        if (technique.id == content.heroItem.id && fieldTonicCount <= 0) return
         when (technique.targetMode) {
             CombatTargetMode.EnemySingle,
             CombatTargetMode.AllySingle -> pendingTechnique = technique
@@ -102,6 +105,10 @@ internal fun PrototypeBattleScreen(
     fun targetCombatant(targetId: String) {
         val technique = pendingTechnique ?: return
         if (targetId !in pendingTargetIds) return
+        if (technique.id == content.heroItem.id && !onConsumeFieldTonic()) {
+            pendingTechnique = null
+            return
+        }
         state = BattleEngine.perform(state, technique, targetId)
         pendingTechnique = null
         showingHeroSkills = false
@@ -167,6 +174,7 @@ internal fun PrototypeBattleScreen(
                 CommandPanel(
                     active = active,
                     content = content,
+                    fieldTonicCount = fieldTonicCount,
                     showingHeroSkills = showingHeroSkills,
                     onShowHeroSkills = { showingHeroSkills = true },
                     onBackFromHeroSkills = { showingHeroSkills = false },
@@ -369,6 +377,7 @@ private fun BattleFigure(unit: CombatantState, modifier: Modifier = Modifier) {
 private fun CommandPanel(
     active: CombatantState?,
     content: PrototypeBattleContent,
+    fieldTonicCount: Int,
     showingHeroSkills: Boolean,
     onShowHeroSkills: () -> Unit,
     onBackFromHeroSkills: () -> Unit,
@@ -409,8 +418,8 @@ private fun CommandPanel(
             } else {
                 val commandActions = listOf(
                     CommandChoice("Attack") { onChooseTechnique(content.heroAttack) },
-                    CommandChoice("Skills", onShowHeroSkills),
-                    CommandChoice("Item") { onChooseTechnique(content.heroItem) },
+                    CommandChoice("Skills", action = onShowHeroSkills),
+                    CommandChoice("Item · Tonic ×$fieldTonicCount", enabled = fieldTonicCount > 0) { onChooseTechnique(content.heroItem) },
                     CommandChoice("Defend") { onChooseTechnique(content.heroDefend) },
                     CommandChoice("Capture") { onChooseTechnique(content.heroCapture) }
                 )
@@ -428,7 +437,11 @@ private fun CommandPanel(
     }
 }
 
-private data class CommandChoice(val label: String, val action: () -> Unit)
+private data class CommandChoice(
+    val label: String,
+    val enabled: Boolean = true,
+    val action: () -> Unit
+)
 
 @Composable
 private fun CommandChoiceGrid(actions: List<CommandChoice>) {
@@ -438,7 +451,11 @@ private fun CommandChoiceGrid(actions: List<CommandChoice>) {
             actions.chunked(columns).forEach { rowActions ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                     rowActions.forEach { action ->
-                        Button(onClick = action.action, modifier = Modifier.weight(1f)) { Text(action.label) }
+                        Button(
+                            onClick = action.action,
+                            enabled = action.enabled,
+                            modifier = Modifier.weight(1f)
+                        ) { Text(action.label) }
                     }
                     repeat(columns - rowActions.size) { Spacer(Modifier.weight(1f)) }
                 }
