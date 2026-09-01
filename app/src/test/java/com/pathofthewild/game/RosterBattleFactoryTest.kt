@@ -108,6 +108,27 @@ class RosterBattleFactoryTest {
         assertEquals(CombatActionKind.RestoreMp, content.heroFocusDraught.kind)
     }
 
+    @Test
+    fun battlePlayerSideMatchesSharedPartyFactory() {
+        val north = owned("north", "ashfang", PlayerFormationSlot.North)
+        val center = owned("center", "stonehorn", PlayerFormationSlot.Center)
+        val monsters = listOf(north, center)
+        val expected = PlayerPartyFactory.activeCombatants(
+            protagonistName = "Hero",
+            protagonistLevel = 7,
+            activeMonsters = monsters
+        )
+        val content = RosterBattleFactory.create(
+            encounterName = "Wildling Pack",
+            protagonistName = "Hero",
+            protagonistLevel = 7,
+            activeMonsters = monsters
+        )
+        val actual = content.initialState.combatants.filter { it.side == CombatSide.Player }
+
+        assertEquals(expected, actual)
+    }
+
     private fun owned(id: String, species: String, slot: PlayerFormationSlot?) = OwnedMonster(
         instanceId = id,
         speciesId = species,
