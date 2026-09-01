@@ -78,6 +78,20 @@ class RosterBattleFactoryTest {
         assertTrue(content.initialState.combatants.any { it.side == CombatSide.Enemy && it.id == "river_stalker" })
     }
 
+    @Test
+    fun heroFieldTonicUsesInventoryCatalogDefinition() {
+        val content = RosterBattleFactory.create(
+            encounterName = "Wildling Pack",
+            protagonistName = "Hero",
+            protagonistLevel = 12,
+            activeMonsters = emptyList()
+        )
+
+        assertEquals(ItemCatalog.fieldTonic.name, content.heroItem.name)
+        assertEquals(ItemCatalog.fieldTonic.power, content.heroItem.power)
+        assertEquals(CombatActionKind.Heal, content.heroItem.kind)
+    }
+
     private fun owned(id: String, species: String, slot: PlayerFormationSlot?) = OwnedMonster(
         instanceId = id,
         speciesId = species,
