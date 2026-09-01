@@ -750,6 +750,10 @@ private fun HomeScreen(
             }
         }
         item {
+            SaveBackupPanel(characterName = profile.name)
+        }
+
+        item {
             ResponsiveCard {
                 Text("Current milestone", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text("Explore the nearby wild tiles. Unlocked tiles stay unlocked and can be revisited for free.")
