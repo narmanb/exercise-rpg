@@ -51,6 +51,7 @@ The app is built in Kotlin with Jetpack Compose and is designed to adapt across 
 
 - Manual workout logging with Strength, Cardio, Mobility, Sport, and Other categories, duration, optional effort, notes, history, and quick reuse of recent exercises.
 - Strength entries can additionally record an optional working load in pounds or kilograms and per-set reps such as `8/8/6`.
+- Workout history includes 7-day, 30-day, 90-day, and all-time summaries with workout counts, total minutes, active days, and category breakdowns.
 - Manual calorie logging, configurable daily target, and calorie-history chart/range views.
 - Manual save export/import with validation and rollback protection.
 - Character-scoped save state across overworld progress, local events, monsters, inventory, party vitals, protagonist class, fitness rewards, protagonist gameplay XP, and workout history.
