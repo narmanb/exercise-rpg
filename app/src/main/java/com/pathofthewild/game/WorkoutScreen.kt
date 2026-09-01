@@ -31,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -47,7 +48,12 @@ internal fun WorkoutScreen(modifier: Modifier = Modifier) {
     var loadText by remember { mutableStateOf("") }
     var loadUnit by remember { mutableStateOf(WorkoutLoadUnit.Pounds) }
     var setRepsText by remember { mutableStateOf("") }
+    var historyRange by remember { mutableStateOf(WorkoutHistoryRange.SevenDays) }
     val recentTemplates = remember(history) { WorkoutQuickReuseRules.recentTemplates(history) }
+    val today = LocalDate.now()
+    val historySummary = remember(history, historyRange, today) {
+        WorkoutHistoryRules.summarize(history, historyRange, today, ZoneId.systemDefault())
+    }
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -247,14 +253,39 @@ internal fun WorkoutScreen(modifier: Modifier = Modifier) {
         item {
             WorkoutCard {
                 Text("Training history", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("${history.size} workout(s) · ${history.sumOf { it.minutes }} total minutes")
                 Spacer(Modifier.height(8.dp))
-                if (history.isEmpty()) {
-                    Text("No workouts logged yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                WorkoutHistoryRangeSelector(historyRange, onSelected = { historyRange = it })
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "${historySummary.workoutCount} workout(s) · ${historySummary.totalMinutes} min · ${historySummary.activeDays} active day(s)",
+                    fontWeight = FontWeight.SemiBold
+                )
+                val nonZeroCategories = historySummary.categoryMinutes.filterValues { it > 0L }
+                if (nonZeroCategories.isNotEmpty()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text("By category", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    nonZeroCategories.forEach { (workoutCategory, minutes) ->
+                        Text(
+                            "${workoutCategory.label}: $minutes min",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                if (historySummary.entries.isEmpty()) {
+                    Text("No workouts logged in this range.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
-                    history.take(20).forEachIndexed { index, entry ->
+                    val visibleEntries = historySummary.entries.take(50)
+                    visibleEntries.forEachIndexed { index, entry ->
                         if (index > 0) HorizontalDivider(Modifier.padding(vertical = 8.dp))
                         WorkoutHistoryRow(entry)
+                    }
+                    if (historySummary.entries.size > visibleEntries.size) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Showing the latest ${visibleEntries.size} of ${historySummary.entries.size} workouts in this range.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
@@ -280,6 +311,40 @@ private fun sanitizeLoadInput(value: String): String {
 private fun sanitizeRepsInput(value: String): String = value
     .filter { it.isDigit() || it == '/' || it == ',' || it.isWhitespace() }
     .take(100)
+
+@Composable
+private fun WorkoutHistoryRangeSelector(
+    selected: WorkoutHistoryRange,
+    onSelected: (WorkoutHistoryRange) -> Unit
+) {
+    @Composable
+    fun RangeButton(range: WorkoutHistoryRange, modifier: Modifier = Modifier) {
+        if (selected == range) {
+            Button(onClick = { onSelected(range) }, modifier = modifier) { Text(range.label) }
+        } else {
+            OutlinedButton(onClick = { onSelected(range) }, modifier = modifier) { Text(range.label) }
+        }
+    }
+
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        if (maxWidth >= 520.dp) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                WorkoutHistoryRange.entries.forEach { range -> RangeButton(range, Modifier.weight(1f)) }
+            }
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    RangeButton(WorkoutHistoryRange.SevenDays, Modifier.weight(1f))
+                    RangeButton(WorkoutHistoryRange.ThirtyDays, Modifier.weight(1f))
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    RangeButton(WorkoutHistoryRange.NinetyDays, Modifier.weight(1f))
+                    RangeButton(WorkoutHistoryRange.AllTime, Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
 
 @Composable
 private fun WorkoutLoadUnitSelector(
