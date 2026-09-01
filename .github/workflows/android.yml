@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -17,54 +17,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Connect save backup panel
-        if: github.event_name == 'push' && github.ref == 'refs/heads/save-backup-v1'
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          path = Path('app/src/main/java/com/pathofthewild/game/MainActivity.kt')
-          lines = path.read_text().splitlines()
-
-          if not any('SaveBackupPanel(characterName = profile.name)' in line for line in lines):
-              milestone = next((i for i, line in enumerate(lines) if 'Text("Current milestone"' in line), None)
-              if milestone is None:
-                  raise SystemExit('Current milestone anchor not found')
-              item_start = milestone
-              while item_start >= 0 and lines[item_start].strip() != 'item {':
-                  item_start -= 1
-              if item_start < 0:
-                  raise SystemExit('Home item insertion point not found')
-              lines[item_start:item_start] = [
-                  '        item {',
-                  '            SaveBackupPanel(characterName = profile.name)',
-                  '        }',
-                  '',
-              ]
-
-          if not any('SaveBackupPanel(characterName = null)' in line for line in lines):
-              creation_start = next((i for i, line in enumerate(lines) if line.strip() == 'private fun CharacterCreationScreen('), None)
-              if creation_start is None:
-                  raise SystemExit('CharacterCreationScreen anchor not found')
-              spacer = next((i for i in range(creation_start, min(len(lines), creation_start + 120)) if lines[i].strip() == 'item { Spacer(Modifier.height(32.dp)) }'), None)
-              if spacer is None:
-                  raise SystemExit('Character creation footer anchor not found')
-              lines[spacer:spacer] = [
-                  '            item {',
-                  '                SaveBackupPanel(characterName = null)',
-                  '            }',
-              ]
-
-          path.write_text('\n'.join(lines) + '\n')
-          PY
-          if ! git diff --quiet -- app/src/main/java/com/pathofthewild/game/MainActivity.kt; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add app/src/main/java/com/pathofthewild/game/MainActivity.kt
-            git commit -m "Expose save restore before character creation"
-            git push origin HEAD:save-backup-v1
-          fi
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
