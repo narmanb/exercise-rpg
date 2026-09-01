@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -17,6 +17,153 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Connect persistent inventory to RPG loop
+        if: github.event_name == 'push' && github.ref == 'refs/heads/inventory-v1'
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def patch(path_str, replacements):
+              path = Path(path_str)
+              text = path.read_text()
+              original = text
+              for old, new, expected in replacements:
+                  if new in text:
+                      continue
+                  count = text.count(old)
+                  if count != expected:
+                      raise SystemExit(f'{path}: expected {expected} matches, found {count}: {old[:160]!r}')
+                  text = text.replace(old, new)
+              if text != original:
+                  path.write_text(text)
+
+          patch('app/src/main/java/com/pathofthewild/game/OverworldScreen.kt', [
+              (
+                  '''    val localProgressStore = remember { LocalAreaProgressStore(context) }\n    val world = PrototypeOverworld.world''',
+                  '''    val localProgressStore = remember { LocalAreaProgressStore(context) }\n    val inventoryStore = remember { InventoryStore(context) }\n    val world = PrototypeOverworld.world''',
+                  1
+              ),
+              (
+                  '''    localProgressStore.ensureCharacter(characterCreatedAtEpochMs)\n\n    var position''',
+                  '''    localProgressStore.ensureCharacter(characterCreatedAtEpochMs)\n    inventoryStore.ensureCharacter(characterCreatedAtEpochMs)\n\n    var position''',
+                  1
+              ),
+              (
+                  '''    var rosterRevision by remember(characterCreatedAtEpochMs) { mutableIntStateOf(0) }\n    var activeLocalAreaId''',
+                  '''    var rosterRevision by remember(characterCreatedAtEpochMs) { mutableIntStateOf(0) }\n    var inventoryRevision by remember(characterCreatedAtEpochMs) { mutableIntStateOf(0) }\n    var activeLocalAreaId''',
+                  1
+              ),
+              (
+                  '''    var activeLocalEncounter by remember { mutableStateOf<LocalAreaObject?>(null) }\n    var resolvedLocalObjectIds''',
+                  '''    var activeLocalEncounter by remember { mutableStateOf<LocalAreaObject?>(null) }\n    var activeShop by remember { mutableStateOf<LocalAreaObject?>(null) }\n    var resolvedLocalObjectIds''',
+                  1
+              ),
+              (
+                  '''    val activeParty = remember(characterCreatedAtEpochMs, rosterRevision) { rosterStore.activeParty() }\n    val currentSight''',
+                  '''    val activeParty = remember(characterCreatedAtEpochMs, rosterRevision) { rosterStore.activeParty() }\n    val inventory = remember(characterCreatedAtEpochMs, inventoryRevision) { inventoryStore.load() }\n    val currentSight''',
+                  1
+              ),
+              (
+                  '''    fun moveTo(point: GridPoint) {''',
+                  '''    fun consumeFieldTonic(): Boolean {\n        return when (inventoryStore.consume(ItemCatalog.fieldTonic.id)) {\n            is InventoryTransaction.Rejected -> false\n            is InventoryTransaction.Success -> {\n                inventoryRevision++\n                true\n            }\n        }\n    }\n\n    fun moveTo(point: GridPoint) {''',
+                  1
+              ),
+              (
+                  '''            activeMonsters = activeParty,\n            onVictory =''',
+                  '''            activeMonsters = activeParty,\n            fieldTonicCount = inventory.quantity(ItemCatalog.fieldTonic.id),\n            onConsumeFieldTonic = ::consumeFieldTonic,\n            onVictory =''',
+                  2
+              ),
+              (
+                  '''                rosterRevision++\n                localProgressStore.resolve(localEncounterForBattle.id)''',
+                  '''                rosterRevision++\n                val reward = RewardRules.battleVictoryReward(protagonistLevel, localEncounter = true)\n                inventoryStore.applyReward(reward)\n                inventoryRevision++\n                localProgressStore.resolve(localEncounterForBattle.id)''',
+                  1
+              ),
+              (
+                  '''    val activeLocalArea = activeLocalAreaId?.let(PrototypeLocalAreas::forOverworldPointOfInterest)''',
+                  '''    val shopForScreen = activeShop\n    if (shopForScreen != null) {\n        ShopScreen(\n            modifier = modifier,\n            characterCreatedAtEpochMs = characterCreatedAtEpochMs,\n            shopName = shopForScreen.name,\n            onInventoryChanged = { inventoryRevision++ },\n            onLeave = { activeShop = null }\n        )\n        return\n    }\n\n    val activeLocalArea = activeLocalAreaId?.let(PrototypeLocalAreas::forOverworldPointOfInterest)''',
+                  1
+              ),
+              (
+                  '''            onResolveObject = { objectHere ->\n                localProgressStore.resolve(objectHere.id)\n                resolvedLocalObjectIds = localProgressStore.resolvedObjectIds()\n            },\n            onEncounter = { objectHere -> activeLocalEncounter = objectHere },''',
+                  '''            onResolveObject = { objectHere ->\n                val reward = RewardRules.localObjectReward(objectHere.id)\n                inventoryStore.applyReward(reward)\n                inventoryRevision++\n                localProgressStore.resolve(objectHere.id)\n                resolvedLocalObjectIds = localProgressStore.resolvedObjectIds()\n                "Opened ${objectHere.name}. Found ${reward.describe()}."\n            },\n            onEncounter = { objectHere -> activeLocalEncounter = objectHere },\n            onShop = { objectHere -> activeShop = objectHere },''',
+                  1
+              ),
+              (
+                  '''                rosterRevision++\n                store.resolvePointOfInterest(encounterForBattle.id)''',
+                  '''                rosterRevision++\n                val reward = RewardRules.battleVictoryReward(protagonistLevel, localEncounter = false)\n                inventoryStore.applyReward(reward)\n                inventoryRevision++\n                store.resolvePointOfInterest(encounterForBattle.id)''',
+                  1
+              ),
+              (
+                  '''                    "${encounterForBattle.name} cleared. Captured monster added to reserve; conscious companions gained Bond."\n                } else {\n                    "${encounterForBattle.name} defeated."''',
+                  '''                    "${encounterForBattle.name} cleared. Captured monster added to reserve; conscious companions gained Bond. Reward: ${reward.describe()}."\n                } else {\n                    "${encounterForBattle.name} defeated. Reward: ${reward.describe()}."''',
+                  1
+              ),
+              (
+                  '''        item {\n            OverworldCard {\n                Row(''',
+                  '''        item {\n            InventoryPanel(\n                characterCreatedAtEpochMs = characterCreatedAtEpochMs,\n                refreshKey = inventoryRevision\n            )\n        }\n\n        item {\n            OverworldCard {\n                Row(''',
+                  1
+              ),
+          ])
+
+          patch('app/src/main/java/com/pathofthewild/game/PrototypeBattleScreen.kt', [
+              (
+                  '''    activeMonsters: List<OwnedMonster> = emptyList(),\n    onVictory:''',
+                  '''    activeMonsters: List<OwnedMonster> = emptyList(),\n    fieldTonicCount: Int = 0,\n    onConsumeFieldTonic: () -> Boolean = { false },\n    onVictory:''',
+                  1
+              ),
+              (
+                  '''        if (!CombatRules.canPayMp(actor, technique)) return\n        when (technique.targetMode)''',
+                  '''        if (!CombatRules.canPayMp(actor, technique)) return\n        if (technique.id == content.heroItem.id && fieldTonicCount <= 0) return\n        when (technique.targetMode)''',
+                  1
+              ),
+              (
+                  '''        if (targetId !in pendingTargetIds) return\n        state = BattleEngine.perform(state, technique, targetId)''',
+                  '''        if (targetId !in pendingTargetIds) return\n        if (technique.id == content.heroItem.id && !onConsumeFieldTonic()) {\n            pendingTechnique = null\n            return\n        }\n        state = BattleEngine.perform(state, technique, targetId)''',
+                  1
+              ),
+              (
+                  '''                    content = content,\n                    showingHeroSkills = showingHeroSkills,''',
+                  '''                    content = content,\n                    fieldTonicCount = fieldTonicCount,\n                    showingHeroSkills = showingHeroSkills,''',
+                  1
+              ),
+              (
+                  '''    content: PrototypeBattleContent,\n    showingHeroSkills: Boolean,''',
+                  '''    content: PrototypeBattleContent,\n    fieldTonicCount: Int,\n    showingHeroSkills: Boolean,''',
+                  1
+              ),
+              (
+                  '''                    CommandChoice("Attack") { onChooseTechnique(content.heroAttack) },\n                    CommandChoice("Skills", onShowHeroSkills),\n                    CommandChoice("Item") { onChooseTechnique(content.heroItem) },\n                    CommandChoice("Defend") { onChooseTechnique(content.heroDefend) },''',
+                  '''                    CommandChoice("Attack") { onChooseTechnique(content.heroAttack) },\n                    CommandChoice("Skills", action = onShowHeroSkills),\n                    CommandChoice("Item · Tonic ×$fieldTonicCount", enabled = fieldTonicCount > 0) { onChooseTechnique(content.heroItem) },\n                    CommandChoice("Defend") { onChooseTechnique(content.heroDefend) },''',
+                  1
+              ),
+              (
+                  '''private data class CommandChoice(val label: String, val action: () -> Unit)''',
+                  '''private data class CommandChoice(\n    val label: String,\n    val enabled: Boolean = true,\n    val action: () -> Unit\n)''',
+                  1
+              ),
+              (
+                  '''                        Button(onClick = action.action, modifier = Modifier.weight(1f)) { Text(action.label) }''',
+                  '''                        Button(\n                            onClick = action.action,\n                            enabled = action.enabled,\n                            modifier = Modifier.weight(1f)\n                        ) { Text(action.label) }''',
+                  1
+              ),
+          ])
+
+          patch('app/src/main/java/com/pathofthewild/game/RosterBattleFactory.kt', [
+              (
+                  '''            name = "Field Tonic",\n            kind = CombatActionKind.Heal,\n            targetMode = CombatTargetMode.AllySingle,\n            power = 70 + (level - 1) * 3,''',
+                  '''            name = ItemCatalog.fieldTonic.name,\n            kind = CombatActionKind.Heal,\n            targetMode = CombatTargetMode.AllySingle,\n            power = ItemCatalog.fieldTonic.power,''',
+                  1
+              ),
+          ])
+          PY
+          if ! git diff --quiet -- app/src/main/java/com/pathofthewild/game; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add app/src/main/java/com/pathofthewild/game
+            git commit -m "Connect inventory rewards shops and battle items"
+            git push origin HEAD:inventory-v1
+          fi
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
