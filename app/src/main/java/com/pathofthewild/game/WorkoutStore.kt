@@ -109,19 +109,50 @@ internal class WorkoutStore(context: Context) {
         setReps: List<Int> = emptyList()
     ): WorkoutEntry {
         val now = System.currentTimeMillis()
-        val entry = WorkoutEntry(
+        val entry = sanitizedEntry(
             id = now,
             performedAtEpochMs = now,
             category = category,
-            minutes = minutes.coerceIn(1, 1440),
-            effort = effort?.coerceIn(1, 10),
-            note = note.trim().take(240),
-            name = WorkoutQuickReuseRules.sanitizeName(name),
-            strength = WorkoutStrengthRules.sanitize(category, load, loadUnit, setReps)
+            minutes = minutes,
+            effort = effort,
+            note = note,
+            name = name,
+            load = load,
+            loadUnit = loadUnit,
+            setReps = setReps
         )
         val updated = (listOf(entry) + history()).take(MAX_STORED_WORKOUTS)
         persist(updated)
         return entry
+    }
+
+    fun update(
+        id: Long,
+        category: WorkoutCategory,
+        minutes: Int,
+        effort: Int?,
+        note: String,
+        name: String = "",
+        load: Double? = null,
+        loadUnit: WorkoutLoadUnit? = null,
+        setReps: List<Int> = emptyList()
+    ): Boolean {
+        val current = history()
+        val existing = current.firstOrNull { it.id == id } ?: return false
+        val replacement = sanitizedEntry(
+            id = existing.id,
+            performedAtEpochMs = existing.performedAtEpochMs,
+            category = category,
+            minutes = minutes,
+            effort = effort,
+            note = note,
+            name = name,
+            load = load,
+            loadUnit = loadUnit,
+            setReps = setReps
+        )
+        persist(WorkoutHistoryMutationRules.replaceById(current, id, replacement))
+        return true
     }
 
     fun delete(id: Long): Boolean {
@@ -133,6 +164,28 @@ internal class WorkoutStore(context: Context) {
     }
 
     fun totalMinutes(): Long = history().sumOf { it.minutes.toLong() }
+
+    private fun sanitizedEntry(
+        id: Long,
+        performedAtEpochMs: Long,
+        category: WorkoutCategory,
+        minutes: Int,
+        effort: Int?,
+        note: String,
+        name: String,
+        load: Double?,
+        loadUnit: WorkoutLoadUnit?,
+        setReps: List<Int>
+    ): WorkoutEntry = WorkoutEntry(
+        id = id,
+        performedAtEpochMs = performedAtEpochMs,
+        category = category,
+        minutes = minutes.coerceIn(1, 1440),
+        effort = effort?.coerceIn(1, 10),
+        note = note.trim().take(240),
+        name = WorkoutQuickReuseRules.sanitizeName(name),
+        strength = WorkoutStrengthRules.sanitize(category, load, loadUnit, setReps)
+    )
 
     private fun persist(history: List<WorkoutEntry>) {
         val array = JSONArray()
