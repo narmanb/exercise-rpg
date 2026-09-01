@@ -25,140 +25,108 @@ jobs:
           from pathlib import Path
 
           path = Path('app/src/main/java/com/pathofthewild/game/MainActivity.kt')
-          text = path.read_text()
+          lines = path.read_text().splitlines()
 
-          if 'import android.content.ContextWrapper\n' not in text:
-              text = text.replace(
-                  'import android.content.Context\n',
-                  'import android.content.Context\nimport android.content.ContextWrapper\n',
-                  1,
-              )
+          if 'import android.content.ContextWrapper' not in lines:
+              anchor = lines.index('import android.content.Context')
+              lines.insert(anchor + 1, 'import android.content.ContextWrapper')
 
-          if 'import androidx.lifecycle.Lifecycle\n' not in text:
-              text = text.replace(
-                  'import androidx.health.connect.client.time.TimeRangeFilter\n',
-                  'import androidx.health.connect.client.time.TimeRangeFilter\n'
-                  'import androidx.lifecycle.Lifecycle\n'
-                  'import androidx.lifecycle.LifecycleEventObserver\n'
-                  'import androidx.lifecycle.LifecycleOwner\n',
-                  1,
-              )
+          if 'import androidx.lifecycle.Lifecycle' not in lines:
+              anchor = lines.index('import androidx.health.connect.client.time.TimeRangeFilter')
+              lines[anchor + 1:anchor + 1] = [
+                  'import androidx.lifecycle.Lifecycle',
+                  'import androidx.lifecycle.LifecycleEventObserver',
+                  'import androidx.lifecycle.LifecycleOwner',
+              ]
 
-          if 'var foregroundResumeGeneration by remember' not in text:
-              anchor = '    var hasStepSensor by remember { mutableStateOf(false) }\n'
-              replacement = anchor + '''    val lifecycleOwner = remember(context) {
-        var current: Context? = context
-        while (current is ContextWrapper && current !is LifecycleOwner) {
-            current = current.baseContext
-        }
-        current as? LifecycleOwner
-    }
-    var isForeground by remember(lifecycleOwner) {
-        mutableStateOf(
-            lifecycleOwner?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.STARTED) ?: true
-        )
-    }
-    var foregroundResumeGeneration by remember { mutableIntStateOf(0) }
-'''
-              if anchor not in text:
-                  raise SystemExit('Step sensor state anchor not found')
-              text = text.replace(anchor, replacement, 1)
+          if not any('var foregroundResumeGeneration by remember' in line for line in lines):
+              anchor = next(i for i, line in enumerate(lines) if line.strip() == 'var hasStepSensor by remember { mutableStateOf(false) }')
+              lines[anchor + 1:anchor + 1] = [
+                  '    val lifecycleOwner = remember(context) {',
+                  '        var current: Context? = context',
+                  '        while (current is ContextWrapper && current !is LifecycleOwner) {',
+                  '            current = current.baseContext',
+                  '        }',
+                  '        current as? LifecycleOwner',
+                  '    }',
+                  '    var isForeground by remember(lifecycleOwner) {',
+                  '        mutableStateOf(',
+                  '            lifecycleOwner?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.STARTED) ?: true',
+                  '        )',
+                  '    }',
+                  '    var foregroundResumeGeneration by remember { mutableIntStateOf(0) }',
+              ]
 
-          if 'DisposableEffect(lifecycleOwner)' not in text:
-              anchor = '    LaunchedEffect(Unit) {\n'
-              block = '''    DisposableEffect(lifecycleOwner) {
-        if (lifecycleOwner == null) {
-            isForeground = true
-            onDispose { }
-        } else {
-            val observer = LifecycleEventObserver { _, event ->
-                when (event) {
-                    Lifecycle.Event.ON_START -> isForeground = true
-                    Lifecycle.Event.ON_RESUME -> {
-                        isForeground = true
-                        activityPermissionGranted =
-                            Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
-                                context.checkSelfPermission(Manifest.permission.ACTIVITY_RECOGNITION) == PackageManager.PERMISSION_GRANTED
-                        foregroundResumeGeneration += 1
-                    }
-                    Lifecycle.Event.ON_STOP -> isForeground = false
-                    else -> Unit
-                }
-            }
-            lifecycleOwner.lifecycle.addObserver(observer)
-            isForeground = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
-            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-        }
-    }
+          if not any(line.strip() == 'DisposableEffect(lifecycleOwner) {' for line in lines):
+              anchor = next(i for i, line in enumerate(lines) if line.strip() == 'LaunchedEffect(Unit) {')
+              lines[anchor:anchor] = [
+                  '    DisposableEffect(lifecycleOwner) {',
+                  '        if (lifecycleOwner == null) {',
+                  '            isForeground = true',
+                  '            onDispose { }',
+                  '        } else {',
+                  '            val observer = LifecycleEventObserver { _, event ->',
+                  '                when (event) {',
+                  '                    Lifecycle.Event.ON_START -> isForeground = true',
+                  '                    Lifecycle.Event.ON_RESUME -> {',
+                  '                        isForeground = true',
+                  '                        activityPermissionGranted =',
+                  '                            Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||',
+                  '                                context.checkSelfPermission(Manifest.permission.ACTIVITY_RECOGNITION) == PackageManager.PERMISSION_GRANTED',
+                  '                        foregroundResumeGeneration += 1',
+                  '                    }',
+                  '                    Lifecycle.Event.ON_STOP -> isForeground = false',
+                  '                    else -> Unit',
+                  '                }',
+                  '            }',
+                  '            lifecycleOwner.lifecycle.addObserver(observer)',
+                  '            isForeground = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)',
+                  '            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }',
+                  '        }',
+                  '    }',
+                  '',
+              ]
 
-'''
-              if anchor not in text:
-                  raise SystemExit('Lifecycle insertion anchor not found')
-              text = text.replace(anchor, block + anchor, 1)
+          for i in range(len(lines) - 1):
+              if lines[i].strip() == 'healthClient = HealthConnectClient.getOrCreate(context)' and lines[i + 1].strip() == 'refreshHealth()':
+                  del lines[i + 1]
+                  break
 
-          health_init = '''        if (healthSdkStatus == HealthConnectClient.SDK_AVAILABLE) {
-            healthClient = HealthConnectClient.getOrCreate(context)
-            refreshHealth()
-        }
-'''
-          if health_init in text:
-              text = text.replace(
-                  health_init,
-                  '''        if (healthSdkStatus == HealthConnectClient.SDK_AVAILABLE) {
-            healthClient = HealthConnectClient.getOrCreate(context)
-        }
-''',
-                  1,
-              )
+          if not any('LaunchedEffect(foregroundResumeGeneration, healthClient, healthSdkStatus)' in line for line in lines):
+              anchor = next(i for i, line in enumerate(lines) if line.strip() == 'LaunchedEffect(profile?.createdAtEpochMs, healthPermissionGranted) {')
+              lines[anchor:anchor] = [
+                  '    LaunchedEffect(foregroundResumeGeneration, healthClient, healthSdkStatus) {',
+                  '        if (',
+                  '            FitnessForegroundPolicy.shouldRefreshHealth(',
+                  '                isForeground = isForeground,',
+                  '                healthSdkAvailable = healthSdkStatus == HealthConnectClient.SDK_AVAILABLE,',
+                  '                healthClientAvailable = healthClient != null',
+                  '            )',
+                  '        ) {',
+                  '            refreshHealth()',
+                  '        }',
+                  '    }',
+                  '',
+              ]
 
-          if 'LaunchedEffect(foregroundResumeGeneration, healthClient, healthSdkStatus)' not in text:
-              anchor = '''    LaunchedEffect(profile?.createdAtEpochMs, healthPermissionGranted) {
-        if (healthPermissionGranted) refreshHealth()
-    }
-'''
-              block = '''    LaunchedEffect(foregroundResumeGeneration, healthClient, healthSdkStatus) {
-        if (
-            FitnessForegroundPolicy.shouldRefreshHealth(
-                isForeground = isForeground,
-                healthSdkAvailable = healthSdkStatus == HealthConnectClient.SDK_AVAILABLE,
-                healthClientAvailable = healthClient != null
-            )
-        ) {
-            refreshHealth()
-        }
-    }
+          for i, line in enumerate(lines):
+              if line.strip() == 'DisposableEffect(activityPermissionGranted) {':
+                  lines[i] = '    DisposableEffect(activityPermissionGranted, isForeground) {'
+                  break
 
-'''
-              if anchor not in text:
-                  raise SystemExit('Foreground refresh anchor not found')
-              text = text.replace(anchor, block + anchor, 1)
+          if not any('FitnessForegroundPolicy.shouldRegisterStepSensor(' in line for line in lines):
+              anchor = next(i for i, line in enumerate(lines) if line.strip() == 'if (activityPermissionGranted && stepSensor != null) {')
+              lines[anchor:anchor + 1] = [
+                  '        if (',
+                  '            FitnessForegroundPolicy.shouldRegisterStepSensor(',
+                  '                isForeground = isForeground,',
+                  '                activityPermissionGranted = activityPermissionGranted,',
+                  '                hasStepSensor = stepSensor != null',
+                  '            ) && stepSensor != null',
+                  '        ) {',
+              ]
 
-          text = text.replace(
-              '    DisposableEffect(activityPermissionGranted) {\n',
-              '    DisposableEffect(activityPermissionGranted, isForeground) {\n',
-              1,
-          )
-
-          old_condition = '''        if (activityPermissionGranted && stepSensor != null) {
-            sensorManager.registerListener(listener, stepSensor, SensorManager.SENSOR_DELAY_NORMAL)
-        }
-'''
-          new_condition = '''        if (
-            FitnessForegroundPolicy.shouldRegisterStepSensor(
-                isForeground = isForeground,
-                activityPermissionGranted = activityPermissionGranted,
-                hasStepSensor = stepSensor != null
-            ) && stepSensor != null
-        ) {
-            sensorManager.registerListener(listener, stepSensor, SensorManager.SENSOR_DELAY_NORMAL)
-        }
-'''
-          if old_condition in text:
-              text = text.replace(old_condition, new_condition, 1)
-          elif 'FitnessForegroundPolicy.shouldRegisterStepSensor(' not in text:
-              raise SystemExit('Step sensor registration anchor not found')
-
-          path.write_text(text)
+          path.write_text('\n'.join(lines) + '\n')
           PY
           if ! git diff --quiet -- app/src/main/java/com/pathofthewild/game/MainActivity.kt; then
             git config user.name "github-actions[bot]"
