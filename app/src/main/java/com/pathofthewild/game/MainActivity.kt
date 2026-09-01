@@ -627,6 +627,9 @@ private fun CharacterCreationScreen(
                     }
                 }
             }
+            item {
+                SaveBackupPanel(characterName = null)
+            }
             item { Spacer(Modifier.height(32.dp)) }
         }
     }
