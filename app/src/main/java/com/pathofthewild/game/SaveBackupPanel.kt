@@ -11,8 +11,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -25,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import java.io.InputStreamReader
 import java.time.LocalDate
 
@@ -82,24 +85,29 @@ internal fun SaveBackupPanel(characterName: String) {
         }
     }
 
-    ResponsiveCard {
-        Text("Save backup", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        Text(status, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(androidx.compose.ui.unit.dp(8f))
+    Card(Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Button(
-                onClick = { exportLauncher.launch(defaultBackupFileName(characterName)) },
-                modifier = Modifier.weight(1f)
+            Text("Save backup", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(status, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("Export save")
-            }
-            OutlinedButton(
-                onClick = { importLauncher.launch(arrayOf("*/*")) },
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Import save")
+                Button(
+                    onClick = { exportLauncher.launch(defaultBackupFileName(characterName)) },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Export save")
+                }
+                OutlinedButton(
+                    onClick = { importLauncher.launch(arrayOf("*/*")) },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Import save")
+                }
             }
         }
     }
@@ -110,7 +118,7 @@ internal fun SaveBackupPanel(characterName: String) {
             onDismissRequest = { pendingImport = null },
             title = { Text("Replace current save?") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(androidx.compose.ui.unit.dp(8f))) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("This backup belongs to ${pending.characterName}.")
                     Text("Importing replaces the current local character, progress, inventory, monsters, fitness reward ledger, food/workout history, and party condition.")
                 }
