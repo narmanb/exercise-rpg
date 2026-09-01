@@ -4,12 +4,13 @@ This milestone adds a complete manual local-save export/import foundation while 
 
 ## Player flow
 
-The Home screen now includes a **Save backup** card.
+The Home screen now includes a **Save backup** card, and character creation includes a **Restore existing save** card so a player can recover after reinstalling without first creating a throwaway character.
 
 - **Export save** opens Android's system document picker and creates a `.potw` backup file at the location chosen by the player.
 - **Import save** opens the system document picker and reads a selected backup without requesting broad storage permission.
+- Import is available both for an existing character and before character creation.
 - A backup is fully decoded and validated before the current save is touched.
-- Valid imports show the backed-up character name and require explicit confirmation before replacement.
+- Valid imports show the backed-up character name and require explicit confirmation before replacement/restoration.
 - After a successful import, the activity recreates so all stores and UI state reload from the restored save.
 
 ## Snapshot scope
@@ -77,4 +78,4 @@ Android automatic backup remains enabled through `android:allowBackup="true"`; m
 - Multiple named in-app save slots.
 - Encryption/password protection for exported files.
 - Cross-version migrations beyond format version 1.
-- A separate settings screen; the first manual backup UI lives on Home.
+- A separate settings screen; manual backup currently lives on Home plus a restore-only entry during character creation.
