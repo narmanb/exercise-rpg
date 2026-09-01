@@ -26,7 +26,8 @@ jobs:
 
           path = Path('app/src/main/java/com/pathofthewild/game/MainActivity.kt')
           lines = path.read_text().splitlines()
-          if not any('SaveBackupPanel(' in line for line in lines):
+
+          if not any('SaveBackupPanel(characterName = profile.name)' in line for line in lines):
               milestone = next((i for i, line in enumerate(lines) if 'Text("Current milestone"' in line), None)
               if milestone is None:
                   raise SystemExit('Current milestone anchor not found')
@@ -35,20 +36,33 @@ jobs:
                   item_start -= 1
               if item_start < 0:
                   raise SystemExit('Home item insertion point not found')
-              insert = [
+              lines[item_start:item_start] = [
                   '        item {',
                   '            SaveBackupPanel(characterName = profile.name)',
                   '        }',
                   '',
               ]
-              lines[item_start:item_start] = insert
-              path.write_text('\n'.join(lines) + '\n')
+
+          if not any('SaveBackupPanel(characterName = null)' in line for line in lines):
+              creation_start = next((i for i, line in enumerate(lines) if line.strip() == 'private fun CharacterCreationScreen('), None)
+              if creation_start is None:
+                  raise SystemExit('CharacterCreationScreen anchor not found')
+              spacer = next((i for i in range(creation_start, min(len(lines), creation_start + 120)) if lines[i].strip() == 'item { Spacer(Modifier.height(32.dp)) }'), None)
+              if spacer is None:
+                  raise SystemExit('Character creation footer anchor not found')
+              lines[spacer:spacer] = [
+                  '            item {',
+                  '                SaveBackupPanel(characterName = null)',
+                  '            }',
+              ]
+
+          path.write_text('\n'.join(lines) + '\n')
           PY
           if ! git diff --quiet -- app/src/main/java/com/pathofthewild/game/MainActivity.kt; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add app/src/main/java/com/pathofthewild/game/MainActivity.kt
-            git commit -m "Expose full save backup on Home"
+            git commit -m "Expose save restore before character creation"
             git push origin HEAD:save-backup-v1
           fi
 
