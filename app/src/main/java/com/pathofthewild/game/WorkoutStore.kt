@@ -21,7 +21,8 @@ internal data class WorkoutEntry(
     val minutes: Int,
     val effort: Int?,
     val note: String,
-    val name: String = ""
+    val name: String = "",
+    val strength: WorkoutStrengthDetails = WorkoutStrengthDetails()
 ) {
     val performedAt: Instant
         get() = Instant.ofEpochMilli(performedAtEpochMs)
@@ -64,6 +65,17 @@ internal class WorkoutStore(context: Context) {
                     val category = runCatching {
                         WorkoutCategory.valueOf(obj.getString("category"))
                     }.getOrDefault(WorkoutCategory.Other)
+                    val rawLoad = if (obj.has("load") && !obj.isNull("load")) obj.optDouble("load", Double.NaN) else null
+                    val rawUnit = obj.optString("loadUnit", "")
+                        .takeIf { it.isNotBlank() }
+                        ?.let { runCatching { WorkoutLoadUnit.valueOf(it) }.getOrNull() }
+                    val rawReps = obj.optJSONArray("setReps")?.let { repsArray ->
+                        buildList {
+                            repeat(repsArray.length()) { repIndex ->
+                                add(repsArray.optInt(repIndex, 0))
+                            }
+                        }
+                    }.orEmpty()
                     add(
                         WorkoutEntry(
                             id = obj.getLong("id"),
@@ -72,7 +84,13 @@ internal class WorkoutStore(context: Context) {
                             minutes = obj.getInt("minutes").coerceIn(1, 1440),
                             effort = if (obj.has("effort") && !obj.isNull("effort")) obj.getInt("effort").coerceIn(1, 10) else null,
                             note = obj.optString("note", "").take(240),
-                            name = WorkoutQuickReuseRules.sanitizeName(obj.optString("name", ""))
+                            name = WorkoutQuickReuseRules.sanitizeName(obj.optString("name", "")),
+                            strength = WorkoutStrengthRules.sanitize(
+                                category = category,
+                                load = rawLoad,
+                                loadUnit = rawUnit,
+                                setReps = rawReps
+                            )
                         )
                     )
                 }
@@ -85,7 +103,10 @@ internal class WorkoutStore(context: Context) {
         minutes: Int,
         effort: Int?,
         note: String,
-        name: String = ""
+        name: String = "",
+        load: Double? = null,
+        loadUnit: WorkoutLoadUnit? = null,
+        setReps: List<Int> = emptyList()
     ): WorkoutEntry {
         val now = System.currentTimeMillis()
         val entry = WorkoutEntry(
@@ -95,11 +116,14 @@ internal class WorkoutStore(context: Context) {
             minutes = minutes.coerceIn(1, 1440),
             effort = effort?.coerceIn(1, 10),
             note = note.trim().take(240),
-            name = WorkoutQuickReuseRules.sanitizeName(name)
+            name = WorkoutQuickReuseRules.sanitizeName(name),
+            strength = WorkoutStrengthRules.sanitize(category, load, loadUnit, setReps)
         )
         val updated = (listOf(entry) + history()).take(MAX_STORED_WORKOUTS)
         val array = JSONArray()
         updated.forEach { item ->
+            val reps = JSONArray()
+            item.strength.setReps.forEach(reps::put)
             array.put(
                 JSONObject()
                     .put("id", item.id)
@@ -109,6 +133,9 @@ internal class WorkoutStore(context: Context) {
                     .put("effort", item.effort ?: JSONObject.NULL)
                     .put("note", item.note)
                     .put("name", item.name)
+                    .put("load", item.strength.load ?: JSONObject.NULL)
+                    .put("loadUnit", item.strength.loadUnit?.name ?: "")
+                    .put("setReps", reps)
             )
         }
         prefs.edit().putString(KEY_WORKOUTS, array.toString()).apply()
