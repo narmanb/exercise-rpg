@@ -164,14 +164,15 @@ internal object SaveBackupCodec {
 }
 
 internal object SaveBackupRules {
-    val REQUIRED_STORES = setOf(
-        "path_of_the_wild_save",
+    const val CORE_STORE = "path_of_the_wild_save"
+    val CHARACTER_SCOPED_STORES = setOf(
         "path_of_the_wild_overworld",
         "path_of_the_wild_local_area_progress",
         "path_of_the_wild_monsters",
         "path_of_the_wild_inventory",
         "path_of_the_wild_party_vitals"
     )
+    val REQUIRED_STORES = CHARACTER_SCOPED_STORES + CORE_STORE
 
     fun validate(snapshot: SaveBackupSnapshot): String? {
         if (snapshot.formatVersion != SaveBackupCodec.CURRENT_FORMAT_VERSION) {
@@ -187,16 +188,16 @@ internal object SaveBackupRules {
             }
         }
 
-        val core = snapshot.stores.getValue("path_of_the_wild_save")
+        val core = snapshot.stores.getValue(CORE_STORE)
         val name = (core["character_name"] as? SaveBackupValue.Text)?.value?.trim().orEmpty()
         val created = (core["character_created"] as? SaveBackupValue.LongValue)?.value ?: 0L
         if (name.isBlank()) return "Backup does not contain a valid character name."
         if (created <= 0L) return "Backup does not contain a valid character creation timestamp."
 
-        val epochStores = REQUIRED_STORES - "path_of_the_wild_save"
-        epochStores.forEach { storeName ->
+        CHARACTER_SCOPED_STORES.forEach { storeName ->
             val epoch = (snapshot.stores.getValue(storeName)["character_epoch"] as? SaveBackupValue.LongValue)?.value
-            if (epoch != null && epoch != created) {
+                ?: return "Backup is missing the character epoch in $storeName."
+            if (epoch != created) {
                 return "Backup contains mismatched character data in $storeName."
             }
         }
