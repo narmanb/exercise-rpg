@@ -47,19 +47,21 @@ The app is built in Kotlin with Jetpack Compose and is designed to adapt across 
 - Greenrest inn recovery and persistent party-condition display.
 - Prototype battle coin rewards.
 
-### Other systems
+### Fitness logs and other systems
 
+- Manual workout logging with Strength, Cardio, Mobility, Sport, and Other categories, duration, optional effort, notes, history, and quick reuse of recent exercises.
+- Strength entries can additionally record an optional working load in pounds or kilograms and per-set reps such as `8/8/6`.
 - Manual calorie logging, configurable daily target, and calorie-history chart/range views.
 - Manual save export/import with validation and rollback protection.
-- Character-scoped save state across overworld progress, local events, monsters, inventory, party vitals, protagonist class, fitness rewards, and protagonist gameplay XP.
+- Character-scoped save state across overworld progress, local events, monsters, inventory, party vitals, protagonist class, fitness rewards, protagonist gameplay XP, and workout history.
 - Responsive bottom navigation / navigation rail layouts.
 - GitHub Actions compile, unit-test, debug-APK build, and artifact upload on `main`.
 
 ## Intentionally unfinished
 
-This is still an active prototype. Combat numbers, reward rates, economy values, encounter compositions, final capture mechanics, protagonist class roster/skills, quests, deeper monster Bond systems, equipment, status effects, bosses, final art, and broader world content remain under development.
+This is still an active prototype. Combat numbers, reward rates, economy values, encounter compositions, final capture mechanics, protagonist class roster/skills, quests, deeper monster Bond systems, equipment, status effects, bosses, final art, broader world content, and exercise-to-RPG reward balance remain under development.
 
-The project avoids locking unresolved design choices into permanent systems merely to fill placeholders.
+Workout logging currently records activity but does not grant RPG rewards. The project avoids locking unresolved design choices into permanent systems merely to fill placeholders.
 
 ## Documentation
 
