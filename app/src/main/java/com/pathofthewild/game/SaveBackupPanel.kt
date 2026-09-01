@@ -37,10 +37,19 @@ private data class PendingSaveImport(
 )
 
 @Composable
-internal fun SaveBackupPanel(characterName: String) {
+internal fun SaveBackupPanel(characterName: String? = null) {
     val context = LocalContext.current
+    val hasCurrentCharacter = characterName != null
     val backupStore = remember { SaveBackupStore(context.applicationContext) }
-    var status by remember { mutableStateOf("Automatic Android backup is enabled. Manual backups include the full local RPG save.") }
+    var status by remember(hasCurrentCharacter) {
+        mutableStateOf(
+            if (hasCurrentCharacter) {
+                "Automatic Android backup is enabled. Manual backups include the full local RPG save."
+            } else {
+                "Already have a Path of the Wild backup? Restore it without creating a new character first."
+            }
+        )
+    }
     var pendingImport by remember { mutableStateOf<PendingSaveImport?>(null) }
 
     val exportLauncher = rememberLauncherForActivityResult(
@@ -78,7 +87,7 @@ internal fun SaveBackupPanel(characterName: String) {
             result.fold(
                 onSuccess = { pending ->
                     pendingImport = pending
-                    status = "Backup validated. Confirm before replacing the current save."
+                    status = "Backup validated. Confirm before importing it."
                 },
                 onFailure = { status = "Backup import rejected: ${it.message ?: "invalid backup"}" }
             )
@@ -90,21 +99,34 @@ internal fun SaveBackupPanel(characterName: String) {
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text("Save backup", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(
+                if (hasCurrentCharacter) "Save backup" else "Restore existing save",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
             Text(status, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Button(
-                    onClick = { exportLauncher.launch(defaultBackupFileName(characterName)) },
-                    modifier = Modifier.weight(1f)
+            if (characterName != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text("Export save")
+                    Button(
+                        onClick = { exportLauncher.launch(defaultBackupFileName(characterName)) },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Export save")
+                    }
+                    OutlinedButton(
+                        onClick = { importLauncher.launch(arrayOf("*/*")) },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Import save")
+                    }
                 }
-                OutlinedButton(
+            } else {
+                Button(
                     onClick = { importLauncher.launch(arrayOf("*/*")) },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Import save")
                 }
@@ -116,11 +138,15 @@ internal fun SaveBackupPanel(characterName: String) {
     if (pending != null) {
         AlertDialog(
             onDismissRequest = { pendingImport = null },
-            title = { Text("Replace current save?") },
+            title = { Text(if (hasCurrentCharacter) "Replace current save?" else "Import this save?") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("This backup belongs to ${pending.characterName}.")
-                    Text("Importing replaces the current local character, progress, inventory, monsters, fitness reward ledger, food/workout history, and party condition.")
+                    if (hasCurrentCharacter) {
+                        Text("Importing replaces the current local character, progress, inventory, monsters, fitness reward ledger, food/workout history, and party condition.")
+                    } else {
+                        Text("The full saved character, RPG progress, fitness reward ledger, inventory, monsters, food/workout history, and party condition will be restored.")
+                    }
                 }
             },
             confirmButton = {
@@ -138,7 +164,7 @@ internal fun SaveBackupPanel(characterName: String) {
                             }
                         }
                     }
-                ) { Text("Replace save") }
+                ) { Text(if (hasCurrentCharacter) "Replace save" else "Import save") }
             },
             dismissButton = {
                 TextButton(onClick = { pendingImport = null }) { Text("Cancel") }
