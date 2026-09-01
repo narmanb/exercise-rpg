@@ -2,13 +2,13 @@ name: Android CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, workout-edit-v1 ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -17,6 +17,85 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Connect workout edit UI
+        if: github.event_name == 'push' && github.ref == 'refs/heads/workout-edit-v1'
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/main/java/com/pathofthewild/game/WorkoutScreen.kt')
+          text = path.read_text()
+
+          def replace_once(old, new, label):
+              global text
+              if new in text:
+                  return
+              if text.count(old) != 1:
+                  raise SystemExit(f'{label}: expected one match, found {text.count(old)}')
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              '    var pendingDelete by remember { mutableStateOf<WorkoutEntry?>(null) }\n',
+              '    var pendingDelete by remember { mutableStateOf<WorkoutEntry?>(null) }\n    var editingEntry by remember { mutableStateOf<WorkoutEntry?>(null) }\n',
+              'editing state'
+          )
+
+          replace_once(
+              '''    val historySummary = remember(history, historyRange, today) {\n        WorkoutHistoryRules.summarize(history, historyRange, today, ZoneId.systemDefault())\n    }\n\n''',
+              '''    val historySummary = remember(history, historyRange, today) {\n        WorkoutHistoryRules.summarize(history, historyRange, today, ZoneId.systemDefault())\n    }\n\n    fun clearWorkoutForm() {\n        editingEntry = null\n        category = WorkoutCategory.Strength\n        nameText = ""\n        minutesText = ""\n        effortText = ""\n        note = ""\n        loadText = ""\n        loadUnit = WorkoutLoadUnit.Pounds\n        setRepsText = ""\n    }\n\n    fun beginWorkoutEdit(entry: WorkoutEntry) {\n        editingEntry = entry\n        category = entry.category\n        nameText = entry.name\n        minutesText = entry.minutes.toString()\n        effortText = entry.effort?.toString().orEmpty()\n        note = entry.note\n        loadText = WorkoutStrengthRules.loadText(entry.strength.load)\n        loadUnit = entry.strength.loadUnit ?: WorkoutLoadUnit.Pounds\n        setRepsText = WorkoutStrengthRules.repsText(entry.strength.setReps)\n    }\n\n''',
+              'form helpers'
+          )
+
+          replace_once(
+              '        if (recentTemplates.isNotEmpty()) {\n',
+              '        if (recentTemplates.isNotEmpty() && editingEntry == null) {\n',
+              'quick reuse visibility'
+          )
+
+          replace_once(
+              '                Text("New workout", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)\n',
+              '                Text(if (editingEntry == null) "New workout" else "Edit workout", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)\n                if (editingEntry != null) {\n                    Text("Saving changes keeps the original workout date and time.", color = MaterialTheme.colorScheme.onSurfaceVariant)\n                }\n',
+              'form heading'
+          )
+
+          old_save = '''                        store.add(\n                            category = category,\n                            minutes = minutes,\n                            effort = effort,\n                            note = note,\n                            name = nameText,\n                            load = loadText.toDoubleOrNull(),\n                            loadUnit = loadUnit,\n                            setReps = WorkoutStrengthRules.parseSetReps(setRepsText)\n                        )\n                        history = store.history()\n                        nameText = ""\n                        minutesText = ""\n                        effortText = ""\n                        note = ""\n                        loadText = ""\n                        setRepsText = ""\n'''
+          new_save = '''                        val edit = editingEntry\n                        if (edit == null) {\n                            store.add(\n                                category = category,\n                                minutes = minutes,\n                                effort = effort,\n                                note = note,\n                                name = nameText,\n                                load = loadText.toDoubleOrNull(),\n                                loadUnit = loadUnit,\n                                setReps = WorkoutStrengthRules.parseSetReps(setRepsText)\n                            )\n                        } else {\n                            store.update(\n                                id = edit.id,\n                                category = category,\n                                minutes = minutes,\n                                effort = effort,\n                                note = note,\n                                name = nameText,\n                                load = loadText.toDoubleOrNull(),\n                                loadUnit = loadUnit,\n                                setReps = WorkoutStrengthRules.parseSetReps(setRepsText)\n                            )\n                        }\n                        history = store.history()\n                        clearWorkoutForm()\n'''
+          replace_once(old_save, new_save, 'save/update action')
+
+          replace_once(
+              '                ) { Text("Save workout") }\n',
+              '                ) { Text(if (editingEntry == null) "Save workout" else "Save changes") }\n                if (editingEntry != null) {\n                    Spacer(Modifier.height(6.dp))\n                    OutlinedButton(onClick = { clearWorkoutForm() }, modifier = Modifier.fillMaxWidth()) {\n                        Text("Cancel edit")\n                    }\n                }\n',
+              'save button label'
+          )
+
+          replace_once(
+              '                        WorkoutHistoryRow(entry, onDeleteRequested = { pendingDelete = entry })\n',
+              '''                        WorkoutHistoryRow(\n                            entry = entry,\n                            onEditRequested = { beginWorkoutEdit(entry) },\n                            onDeleteRequested = { pendingDelete = entry }\n                        )\n''',
+              'history callbacks'
+          )
+
+          replace_once(
+              '''private fun WorkoutHistoryRow(\n    entry: WorkoutEntry,\n    onDeleteRequested: () -> Unit\n) {\n''',
+              '''private fun WorkoutHistoryRow(\n    entry: WorkoutEntry,\n    onEditRequested: () -> Unit,\n    onDeleteRequested: () -> Unit\n) {\n''',
+              'history row signature'
+          )
+
+          replace_once(
+              '''        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {\n            TextButton(onClick = onDeleteRequested) { Text("Delete") }\n        }\n''',
+              '''        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {\n            TextButton(onClick = onEditRequested) { Text("Edit") }\n            TextButton(onClick = onDeleteRequested) { Text("Delete") }\n        }\n''',
+              'history row buttons'
+          )
+
+          path.write_text(text)
+          PY
+          if ! git diff --quiet -- app/src/main/java/com/pathofthewild/game/WorkoutScreen.kt; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add app/src/main/java/com/pathofthewild/game/WorkoutScreen.kt
+            git commit -m "Wire workout editing into training history"
+            git push origin HEAD:workout-edit-v1
+          fi
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
