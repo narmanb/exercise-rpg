@@ -296,6 +296,15 @@ internal fun OverworldScreen(
         }
 
         item {
+            PartyStatusPanel(
+                protagonistName = protagonistName,
+                protagonistLevel = protagonistLevel,
+                activeMonsters = activeParty,
+                savedVitals = partyVitals
+            )
+        }
+
+        item {
             InventoryPanel(
                 characterCreatedAtEpochMs = characterCreatedAtEpochMs,
                 refreshKey = inventoryRevision
