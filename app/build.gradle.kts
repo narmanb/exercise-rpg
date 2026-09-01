@@ -44,6 +44,7 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.health.connect:connect-client:1.1.0")
+    implementation("com.google.android.gms:play-services-location:21.4.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 
