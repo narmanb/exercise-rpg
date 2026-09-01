@@ -50,6 +50,7 @@ internal class SaveBackupStore(private val context: Context) {
         MonsterRosterStore(context).ensureCharacter(created)
         InventoryStore(context).ensureCharacter(created)
         PartyVitalsStore(context).ensureCharacter(created)
+        ProtagonistClassStore(context).ensureCharacter(created)
     }
 
     private fun restore(snapshot: SaveBackupSnapshot): Boolean {
