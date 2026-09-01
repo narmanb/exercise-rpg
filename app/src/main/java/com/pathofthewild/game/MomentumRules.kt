@@ -7,7 +7,7 @@ internal sealed interface MomentumSpendResult {
 
 internal sealed interface MomentumRallyResult {
     data class Success(
-        val rewardState: FitnessRewardState,
+        val cost: Long,
         val party: List<CombatantState>
     ) : MomentumRallyResult
 
@@ -26,15 +26,13 @@ internal object MomentumRules {
         )
     }
 
-    fun rally(state: FitnessRewardState, party: Collection<CombatantState>): MomentumRallyResult {
+    fun rally(momentumAvailable: Long, party: Collection<CombatantState>): MomentumRallyResult {
         val activeParty = party.filter { it.side == CombatSide.Player }
         if (activeParty.none { it.alive && (it.hp < it.maxHp || it.mp < it.maxMp) }) {
             return MomentumRallyResult.Rejected("The conscious party is already fully restored.")
         }
-
-        val spent = when (val result = spend(state, RALLY_COST)) {
-            is MomentumSpendResult.Rejected -> return MomentumRallyResult.Rejected(result.reason)
-            is MomentumSpendResult.Success -> result.state
+        if (momentumAvailable < RALLY_COST) {
+            return MomentumRallyResult.Rejected("Not enough Momentum.")
         }
 
         val recovered = activeParty.map { member ->
@@ -54,6 +52,6 @@ internal object MomentumRules {
             }
         }
 
-        return MomentumRallyResult.Success(spent, recovered)
+        return MomentumRallyResult.Success(RALLY_COST, recovered)
     }
 }
