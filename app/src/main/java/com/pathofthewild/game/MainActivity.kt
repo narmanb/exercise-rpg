@@ -2,6 +2,7 @@ package com.pathofthewild.game
 
 import android.Manifest
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
@@ -89,6 +90,9 @@ import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.time.TimeRangeFilter
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -300,6 +304,19 @@ private fun PathOfTheWildApp() {
     }
     var rawSensorSteps by remember { mutableFloatStateOf(-1f) }
     var hasStepSensor by remember { mutableStateOf(false) }
+    val lifecycleOwner = remember(context) {
+        var current: Context? = context
+        while (current is ContextWrapper && current !is LifecycleOwner) {
+            current = current.baseContext
+        }
+        current as? LifecycleOwner
+    }
+    var isForeground by remember(lifecycleOwner) {
+        mutableStateOf(
+            lifecycleOwner?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.STARTED) ?: true
+        )
+    }
+    var foregroundResumeGeneration by remember { mutableIntStateOf(0) }
 
     suspend fun refreshHealth() {
         val client = healthClient ?: return
@@ -362,10 +379,46 @@ private fun PathOfTheWildApp() {
         ActivityResultContracts.RequestPermission()
     ) { granted -> activityPermissionGranted = granted }
 
+    DisposableEffect(lifecycleOwner) {
+        if (lifecycleOwner == null) {
+            isForeground = true
+            onDispose { }
+        } else {
+            val observer = LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_START -> isForeground = true
+                    Lifecycle.Event.ON_RESUME -> {
+                        isForeground = true
+                        activityPermissionGranted =
+                            Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+                                context.checkSelfPermission(Manifest.permission.ACTIVITY_RECOGNITION) == PackageManager.PERMISSION_GRANTED
+                        foregroundResumeGeneration += 1
+                    }
+                    Lifecycle.Event.ON_STOP -> isForeground = false
+                    else -> Unit
+                }
+            }
+            lifecycleOwner.lifecycle.addObserver(observer)
+            isForeground = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        }
+    }
+
     LaunchedEffect(Unit) {
         healthSdkStatus = HealthConnectClient.getSdkStatus(context)
         if (healthSdkStatus == HealthConnectClient.SDK_AVAILABLE) {
             healthClient = HealthConnectClient.getOrCreate(context)
+        }
+    }
+
+    LaunchedEffect(foregroundResumeGeneration, healthClient, healthSdkStatus) {
+        if (
+            FitnessForegroundPolicy.shouldRefreshHealth(
+                isForeground = isForeground,
+                healthSdkAvailable = healthSdkStatus == HealthConnectClient.SDK_AVAILABLE,
+                healthClientAvailable = healthClient != null
+            )
+        ) {
             refreshHealth()
         }
     }
@@ -403,7 +456,7 @@ private fun PathOfTheWildApp() {
         )
     }
 
-    DisposableEffect(activityPermissionGranted) {
+    DisposableEffect(activityPermissionGranted, isForeground) {
         val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
         val stepSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
         hasStepSensor = stepSensor != null
@@ -413,7 +466,13 @@ private fun PathOfTheWildApp() {
             }
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
         }
-        if (activityPermissionGranted && stepSensor != null) {
+        if (
+            FitnessForegroundPolicy.shouldRegisterStepSensor(
+                isForeground = isForeground,
+                activityPermissionGranted = activityPermissionGranted,
+                hasStepSensor = stepSensor != null
+            ) && stepSensor != null
+        ) {
             sensorManager.registerListener(listener, stepSensor, SensorManager.SENSOR_DELAY_NORMAL)
         }
         onDispose { sensorManager.unregisterListener(listener) }
