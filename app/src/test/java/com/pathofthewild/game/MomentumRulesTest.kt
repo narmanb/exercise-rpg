@@ -40,9 +40,8 @@ class MomentumRulesTest {
     fun rallyRestoresQuarterResourcesToConsciousPartyAndDoesNotRevive() {
         val hero = member("hero", hp = 100, mp = 10)
         val monster = member("monster", hp = 0, mp = 5)
-        val state = FitnessRewardState(totalMomentumGranted = 20L)
 
-        val result = MomentumRules.rally(state, listOf(hero, monster))
+        val result = MomentumRules.rally(20L, listOf(hero, monster))
 
         assertTrue(result is MomentumRallyResult.Success)
         val success = result as MomentumRallyResult.Success
@@ -51,18 +50,25 @@ class MomentumRulesTest {
         assertEquals(150, healedHero.hp)
         assertEquals(20, healedHero.mp)
         assertEquals(0, koMonster.hp)
-        assertEquals(10L, success.rewardState.momentumAvailable)
+        assertEquals(MomentumRules.RALLY_COST, success.cost)
     }
 
     @Test
-    fun rallyRejectsWithoutSpendingWhenPartyCannotBenefit() {
+    fun rallyRejectsWithoutCostWhenPartyCannotBenefit() {
         val full = member("hero", hp = 200, mp = 40)
-        val state = FitnessRewardState(totalMomentumGranted = 20L)
 
-        val result = MomentumRules.rally(state, listOf(full))
+        val result = MomentumRules.rally(20L, listOf(full))
 
         assertTrue(result is MomentumRallyResult.Rejected)
-        assertEquals(20L, state.momentumAvailable)
+    }
+
+    @Test
+    fun rallyRejectsWhenMomentumIsBelowCost() {
+        val wounded = member("hero", hp = 100, mp = 10)
+
+        val result = MomentumRules.rally(MomentumRules.RALLY_COST - 1L, listOf(wounded))
+
+        assertTrue(result is MomentumRallyResult.Rejected)
     }
 
     @Test
