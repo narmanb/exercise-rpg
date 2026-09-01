@@ -2,13 +2,13 @@ name: Android CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, fitness-foreground-sync-v1 ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -17,6 +17,156 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Connect foreground fitness lifecycle
+        if: github.event_name == 'push' && github.ref == 'refs/heads/fitness-foreground-sync-v1'
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/main/java/com/pathofthewild/game/MainActivity.kt')
+          text = path.read_text()
+
+          if 'import android.content.ContextWrapper\n' not in text:
+              text = text.replace(
+                  'import android.content.Context\n',
+                  'import android.content.Context\nimport android.content.ContextWrapper\n',
+                  1,
+              )
+
+          if 'import androidx.lifecycle.Lifecycle\n' not in text:
+              text = text.replace(
+                  'import androidx.health.connect.client.time.TimeRangeFilter\n',
+                  'import androidx.health.connect.client.time.TimeRangeFilter\n'
+                  'import androidx.lifecycle.Lifecycle\n'
+                  'import androidx.lifecycle.LifecycleEventObserver\n'
+                  'import androidx.lifecycle.LifecycleOwner\n',
+                  1,
+              )
+
+          if 'var foregroundResumeGeneration by remember' not in text:
+              anchor = '    var hasStepSensor by remember { mutableStateOf(false) }\n'
+              replacement = anchor + '''    val lifecycleOwner = remember(context) {
+        var current: Context? = context
+        while (current is ContextWrapper && current !is LifecycleOwner) {
+            current = current.baseContext
+        }
+        current as? LifecycleOwner
+    }
+    var isForeground by remember(lifecycleOwner) {
+        mutableStateOf(
+            lifecycleOwner?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.STARTED) ?: true
+        )
+    }
+    var foregroundResumeGeneration by remember { mutableIntStateOf(0) }
+'''
+              if anchor not in text:
+                  raise SystemExit('Step sensor state anchor not found')
+              text = text.replace(anchor, replacement, 1)
+
+          if 'DisposableEffect(lifecycleOwner)' not in text:
+              anchor = '    LaunchedEffect(Unit) {\n'
+              block = '''    DisposableEffect(lifecycleOwner) {
+        if (lifecycleOwner == null) {
+            isForeground = true
+            onDispose { }
+        } else {
+            val observer = LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_START -> isForeground = true
+                    Lifecycle.Event.ON_RESUME -> {
+                        isForeground = true
+                        activityPermissionGranted =
+                            Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+                                context.checkSelfPermission(Manifest.permission.ACTIVITY_RECOGNITION) == PackageManager.PERMISSION_GRANTED
+                        foregroundResumeGeneration += 1
+                    }
+                    Lifecycle.Event.ON_STOP -> isForeground = false
+                    else -> Unit
+                }
+            }
+            lifecycleOwner.lifecycle.addObserver(observer)
+            isForeground = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        }
+    }
+
+'''
+              if anchor not in text:
+                  raise SystemExit('Lifecycle insertion anchor not found')
+              text = text.replace(anchor, block + anchor, 1)
+
+          health_init = '''        if (healthSdkStatus == HealthConnectClient.SDK_AVAILABLE) {
+            healthClient = HealthConnectClient.getOrCreate(context)
+            refreshHealth()
+        }
+'''
+          if health_init in text:
+              text = text.replace(
+                  health_init,
+                  '''        if (healthSdkStatus == HealthConnectClient.SDK_AVAILABLE) {
+            healthClient = HealthConnectClient.getOrCreate(context)
+        }
+''',
+                  1,
+              )
+
+          if 'LaunchedEffect(foregroundResumeGeneration, healthClient, healthSdkStatus)' not in text:
+              anchor = '''    LaunchedEffect(profile?.createdAtEpochMs, healthPermissionGranted) {
+        if (healthPermissionGranted) refreshHealth()
+    }
+'''
+              block = '''    LaunchedEffect(foregroundResumeGeneration, healthClient, healthSdkStatus) {
+        if (
+            FitnessForegroundPolicy.shouldRefreshHealth(
+                isForeground = isForeground,
+                healthSdkAvailable = healthSdkStatus == HealthConnectClient.SDK_AVAILABLE,
+                healthClientAvailable = healthClient != null
+            )
+        ) {
+            refreshHealth()
+        }
+    }
+
+'''
+              if anchor not in text:
+                  raise SystemExit('Foreground refresh anchor not found')
+              text = text.replace(anchor, block + anchor, 1)
+
+          text = text.replace(
+              '    DisposableEffect(activityPermissionGranted) {\n',
+              '    DisposableEffect(activityPermissionGranted, isForeground) {\n',
+              1,
+          )
+
+          old_condition = '''        if (activityPermissionGranted && stepSensor != null) {
+            sensorManager.registerListener(listener, stepSensor, SensorManager.SENSOR_DELAY_NORMAL)
+        }
+'''
+          new_condition = '''        if (
+            FitnessForegroundPolicy.shouldRegisterStepSensor(
+                isForeground = isForeground,
+                activityPermissionGranted = activityPermissionGranted,
+                hasStepSensor = stepSensor != null
+            ) && stepSensor != null
+        ) {
+            sensorManager.registerListener(listener, stepSensor, SensorManager.SENSOR_DELAY_NORMAL)
+        }
+'''
+          if old_condition in text:
+              text = text.replace(old_condition, new_condition, 1)
+          elif 'FitnessForegroundPolicy.shouldRegisterStepSensor(' not in text:
+              raise SystemExit('Step sensor registration anchor not found')
+
+          path.write_text(text)
+          PY
+          if ! git diff --quiet -- app/src/main/java/com/pathofthewild/game/MainActivity.kt; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add app/src/main/java/com/pathofthewild/game/MainActivity.kt
+            git commit -m "Follow foreground fitness lifecycle"
+            git push origin HEAD:fitness-foreground-sync-v1
+          fi
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
