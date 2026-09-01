@@ -2,13 +2,13 @@ name: Android CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, protagonist-xp-ledger-v1 ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -17,6 +17,49 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Connect protagonist XP ledger
+        if: github.event_name == 'push' && github.ref == 'refs/heads/protagonist-xp-ledger-v1'
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/main/java/com/pathofthewild/game/MainActivity.kt')
+          lines = path.read_text().splitlines()
+
+          if not any('val protagonistProgressStore = remember' in line for line in lines):
+              anchor = next(i for i, line in enumerate(lines) if line.strip() == 'val overworldStore = remember { OverworldProgressStore(context) }')
+              lines.insert(anchor + 1, '    val protagonistProgressStore = remember { ProtagonistProgressStore(context.applicationContext) }')
+
+          old_block = [
+              '    val walkingXp = rewardLedger.totalWalkingXpGranted',
+              '    val levelProgress = RpgProgression.progress(walkingXp)',
+          ]
+          new_block = [
+              '    val walkingXp = rewardLedger.totalWalkingXpGranted',
+              '    val gameplayXp = profile?.let { protagonistProgressStore.ensureCharacter(it.createdAtEpochMs).gameplayXp } ?: 0L',
+              '    val totalXp = ProtagonistProgressRules.totalXp(walkingXp, gameplayXp)',
+              '    val levelProgress = RpgProgression.progress(totalXp)',
+          ]
+          for i in range(len(lines) - len(old_block) + 1):
+              if lines[i:i + len(old_block)] == old_block:
+                  lines[i:i + len(old_block)] = new_block
+                  break
+
+          old_home = '                        Text("Walking XP $walkingXp", fontWeight = FontWeight.SemiBold)'
+          new_home = '                        Text("Total XP ${levelProgress.totalXp} · Walking $walkingXp", fontWeight = FontWeight.SemiBold)'
+          if old_home in lines:
+              lines[lines.index(old_home)] = new_home
+
+          path.write_text('\n'.join(lines) + '\n')
+          PY
+          if ! git diff --quiet -- app/src/main/java/com/pathofthewild/game/MainActivity.kt; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add app/src/main/java/com/pathofthewild/game/MainActivity.kt
+            git commit -m "Use combined protagonist XP progression"
+            git push origin HEAD:protagonist-xp-ledger-v1
+          fi
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
