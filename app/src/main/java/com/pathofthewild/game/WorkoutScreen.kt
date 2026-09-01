@@ -44,6 +44,9 @@ internal fun WorkoutScreen(modifier: Modifier = Modifier) {
     var minutesText by remember { mutableStateOf("") }
     var effortText by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
+    var loadText by remember { mutableStateOf("") }
+    var loadUnit by remember { mutableStateOf(WorkoutLoadUnit.Pounds) }
+    var setRepsText by remember { mutableStateOf("") }
     val recentTemplates = remember(history) { WorkoutQuickReuseRules.recentTemplates(history) }
 
     LazyColumn(
@@ -78,6 +81,9 @@ internal fun WorkoutScreen(modifier: Modifier = Modifier) {
                                 minutesText = entry.minutes.toString()
                                 effortText = entry.effort?.toString().orEmpty()
                                 note = entry.note
+                                loadText = WorkoutStrengthRules.loadText(entry.strength.load)
+                                loadUnit = entry.strength.loadUnit ?: WorkoutLoadUnit.Pounds
+                                setRepsText = WorkoutStrengthRules.repsText(entry.strength.setReps)
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -88,6 +94,10 @@ internal fun WorkoutScreen(modifier: Modifier = Modifier) {
                                     "${entry.category.label} · ${entry.minutes} min$effortSuffix",
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+                                val strengthSummary = WorkoutStrengthRules.summary(entry.strength)
+                                if (strengthSummary.isNotBlank()) {
+                                    Text(strengthSummary, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
                             }
                         }
                     }
@@ -149,6 +159,55 @@ internal fun WorkoutScreen(modifier: Modifier = Modifier) {
                         }
                     }
                 }
+
+                if (category == WorkoutCategory.Strength) {
+                    Spacer(Modifier.height(12.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(10.dp))
+                    Text("Strength details", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Optional. Record the working load and reps for each set, for example 185 lb and 8/8/6.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    BoxWithConstraints(Modifier.fillMaxWidth()) {
+                        if (ResponsivePolicy.useTwoColumns(maxWidth.value)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                OutlinedTextField(
+                                    value = loadText,
+                                    onValueChange = { loadText = sanitizeLoadInput(it) },
+                                    modifier = Modifier.weight(1f),
+                                    label = { Text("Load (optional)") },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                                )
+                                WorkoutLoadUnitSelector(loadUnit, onSelected = { loadUnit = it }, Modifier.weight(1f))
+                            }
+                        } else {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedTextField(
+                                    value = loadText,
+                                    onValueChange = { loadText = sanitizeLoadInput(it) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    label = { Text("Load (optional)") },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                                )
+                                WorkoutLoadUnitSelector(loadUnit, onSelected = { loadUnit = it }, Modifier.fillMaxWidth())
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = setRepsText,
+                        onValueChange = { setRepsText = sanitizeRepsInput(it) },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Reps by set (optional, e.g. 8/8/6)") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                }
+
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
                     value = note,
@@ -168,13 +227,18 @@ internal fun WorkoutScreen(modifier: Modifier = Modifier) {
                             minutes = minutes,
                             effort = effort,
                             note = note,
-                            name = nameText
+                            name = nameText,
+                            load = loadText.toDoubleOrNull(),
+                            loadUnit = loadUnit,
+                            setReps = WorkoutStrengthRules.parseSetReps(setRepsText)
                         )
                         history = store.history()
                         nameText = ""
                         minutesText = ""
                         effortText = ""
                         note = ""
+                        loadText = ""
+                        setRepsText = ""
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("Save workout") }
@@ -193,6 +257,42 @@ internal fun WorkoutScreen(modifier: Modifier = Modifier) {
                         WorkoutHistoryRow(entry)
                     }
                 }
+            }
+        }
+    }
+}
+
+private fun sanitizeLoadInput(value: String): String {
+    var dotSeen = false
+    return buildString {
+        value.take(8).forEach { char ->
+            when {
+                char.isDigit() -> append(char)
+                char == '.' && !dotSeen -> {
+                    append(char)
+                    dotSeen = true
+                }
+            }
+        }
+    }
+}
+
+private fun sanitizeRepsInput(value: String): String = value
+    .filter { it.isDigit() || it == '/' || it == ',' || it.isWhitespace() }
+    .take(100)
+
+@Composable
+private fun WorkoutLoadUnitSelector(
+    selected: WorkoutLoadUnit,
+    onSelected: (WorkoutLoadUnit) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        WorkoutLoadUnit.entries.forEach { unit ->
+            if (selected == unit) {
+                Button(onClick = { onSelected(unit) }, modifier = Modifier.weight(1f)) { Text(unit.label) }
+            } else {
+                OutlinedButton(onClick = { onSelected(unit) }, modifier = Modifier.weight(1f)) { Text(unit.label) }
             }
         }
     }
@@ -257,6 +357,10 @@ private fun WorkoutHistoryRow(entry: WorkoutEntry) {
             Text(summary)
         }
         Text(whenText, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        val strengthSummary = WorkoutStrengthRules.summary(entry.strength)
+        if (strengthSummary.isNotBlank()) {
+            Text(strengthSummary, fontWeight = FontWeight.SemiBold)
+        }
         entry.effort?.let { Text("Effort $it/10", color = MaterialTheme.colorScheme.onSurfaceVariant) }
         if (entry.note.isNotBlank()) Text(entry.note)
     }
