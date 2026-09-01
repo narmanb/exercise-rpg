@@ -37,7 +37,7 @@ internal object ItemCatalog {
     val focusDraught = ItemDefinition(
         id = "focus_draught",
         name = "Focus Draught",
-        description = "Restores MP. Full battle use will be connected after the basic item flow.",
+        description = "Restores a modest amount of MP to one ally.",
         useType = ItemUseType.RestoreMp,
         power = 20,
         buyPrice = 45
