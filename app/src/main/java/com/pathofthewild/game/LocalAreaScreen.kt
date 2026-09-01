@@ -46,6 +46,7 @@ internal fun LocalAreaScreen(
     onResolveObject: (LocalAreaObject) -> String,
     onEncounter: (LocalAreaObject) -> Unit,
     onShop: (LocalAreaObject) -> Unit,
+    onInn: (LocalAreaObject) -> String,
     onExit: () -> Unit
 ) {
     var message by remember(area.id) {
@@ -70,7 +71,7 @@ internal fun LocalAreaScreen(
                 onShop(objectHere)
                 "Entering ${objectHere.name}."
             }
-            LocalObjectType.Inn -> "${objectHere.name}: resting/healing will be connected later."
+            LocalObjectType.Inn -> onInn(objectHere)
             LocalObjectType.Chest -> {
                 if (objectHere.id in resolvedObjectIds) {
                     "${objectHere.name} is empty."

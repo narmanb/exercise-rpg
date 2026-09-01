@@ -51,13 +51,17 @@ internal fun PrototypeBattleScreen(
     protagonistName: String = "Adventurer",
     protagonistLevel: Int = 1,
     activeMonsters: List<OwnedMonster> = emptyList(),
+    initialPlayerVitals: Map<String, PersistentPartyVitals> = emptyMap(),
+    onPersistPlayerVitals: (Collection<CombatantState>) -> Unit = {},
     battleItemQuantities: Map<String, Int> = emptyMap(),
     onConsumeBattleItem: (String) -> Boolean = { false },
     onVictory: (capturedEnemyIds: Set<String>, bondEligibleMonsterInstanceIds: Set<String>) -> Unit,
     onRetreat: () -> Unit
 ) {
-    val content = remember(encounterName, protagonistName, protagonistLevel, activeMonsters) {
-        RosterBattleFactory.create(encounterName, protagonistName, protagonistLevel, activeMonsters)
+    val content = remember(encounterName, protagonistName, protagonistLevel, activeMonsters, initialPlayerVitals) {
+        val base = RosterBattleFactory.create(encounterName, protagonistName, protagonistLevel, activeMonsters)
+        val restoredCombatants = PartyVitalsRules.apply(base.initialState.combatants, initialPlayerVitals)
+        base.copy(initialState = BattleEngine.start(restoredCombatants))
     }
     var state by remember(encounterName) { mutableStateOf(content.initialState) }
     var pendingTechnique by remember { mutableStateOf<CombatTechnique?>(null) }
@@ -119,6 +123,11 @@ internal fun PrototypeBattleScreen(
         showingHeroItems = false
     }
 
+    fun persistAndRetreat() {
+        onPersistPlayerVitals(state.combatants)
+        onRetreat()
+    }
+
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(12.dp),
@@ -135,7 +144,7 @@ internal fun PrototypeBattleScreen(
                         Text(encounterName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                         Text("Speed timeline · center guardian protection", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    TextButton(onClick = onRetreat) { Text("Retreat") }
+                    TextButton(onClick = ::persistAndRetreat) { Text("Retreat") }
                 }
             }
         }
@@ -194,11 +203,12 @@ internal fun PrototypeBattleScreen(
                 BattleResultPanel(
                     state = state,
                     onVictory = {
+                        onPersistPlayerVitals(state.combatants)
                         val bondEligible = CombatRules.bondEligibleMonsters(state.combatants)
                             .mapTo(mutableSetOf()) { it.id }
                         onVictory(state.capturedEnemyIds, bondEligible)
                     },
-                    onRetreat = onRetreat
+                    onRetreat = ::persistAndRetreat
                 )
             }
         }

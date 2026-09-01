@@ -64,6 +64,7 @@ internal fun OverworldScreen(
     val rosterStore = remember { MonsterRosterStore(context) }
     val localProgressStore = remember { LocalAreaProgressStore(context) }
     val inventoryStore = remember { InventoryStore(context) }
+    val partyVitalsStore = remember { PartyVitalsStore(context) }
     val world = PrototypeOverworld.world
 
     LaunchedEffect(characterCreatedAtEpochMs) {
@@ -75,6 +76,7 @@ internal fun OverworldScreen(
     rosterStore.ensureCharacter(characterCreatedAtEpochMs)
     localProgressStore.ensureCharacter(characterCreatedAtEpochMs)
     inventoryStore.ensureCharacter(characterCreatedAtEpochMs)
+    partyVitalsStore.ensureCharacter(characterCreatedAtEpochMs)
 
     var position by remember(characterCreatedAtEpochMs) { mutableStateOf(store.position()) }
     var unlocked by remember(characterCreatedAtEpochMs) { mutableStateOf(store.unlockedTiles()) }
@@ -95,6 +97,7 @@ internal fun OverworldScreen(
     var resolvedLocalObjectIds by remember(characterCreatedAtEpochMs) {
         mutableStateOf(localProgressStore.resolvedObjectIds())
     }
+    var partyVitals by remember(characterCreatedAtEpochMs) { mutableStateOf(partyVitalsStore.load()) }
 
     val activeParty = remember(characterCreatedAtEpochMs, rosterRevision) { rosterStore.activeParty() }
     val inventory = remember(characterCreatedAtEpochMs, inventoryRevision) { inventoryStore.load() }
@@ -115,6 +118,10 @@ internal fun OverworldScreen(
                 true
             }
         }
+    }
+
+    fun persistPartyVitals(combatants: Collection<CombatantState>) {
+        partyVitals = partyVitalsStore.saveBattleResult(combatants)
     }
 
     fun moveTo(point: GridPoint) {
@@ -164,6 +171,8 @@ internal fun OverworldScreen(
             protagonistName = protagonistName,
             protagonistLevel = protagonistLevel,
             activeMonsters = activeParty,
+            initialPlayerVitals = partyVitals,
+            onPersistPlayerVitals = ::persistPartyVitals,
             battleItemQuantities = inventory.quantities,
             onConsumeBattleItem = ::consumeBattleItem,
             onVictory = { capturedEnemyIds, bondEligibleMonsterInstanceIds ->
@@ -212,6 +221,10 @@ internal fun OverworldScreen(
             },
             onEncounter = { objectHere -> activeLocalEncounter = objectHere },
             onShop = { objectHere -> activeShop = objectHere },
+            onInn = { objectHere ->
+                partyVitals = partyVitalsStore.fullRestore()
+                "${objectHere.name}: your party is fully restored."
+            },
             onExit = {
                 message = "Returned to the Wilds from ${activeLocalArea.name}."
                 activeLocalAreaId = null
@@ -229,6 +242,8 @@ internal fun OverworldScreen(
             protagonistName = protagonistName,
             protagonistLevel = protagonistLevel,
             activeMonsters = activeParty,
+            initialPlayerVitals = partyVitals,
+            onPersistPlayerVitals = ::persistPartyVitals,
             battleItemQuantities = inventory.quantities,
             onConsumeBattleItem = ::consumeBattleItem,
             onVictory = { capturedEnemyIds, bondEligibleMonsterInstanceIds ->

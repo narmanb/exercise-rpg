@@ -18,9 +18,11 @@ internal data class BattleState(
 }
 
 internal object BattleEngine {
-    fun start(combatants: List<CombatantState>): BattleState = BattleState(
-        combatants = combatants,
-        queue = CombatTimeline.initial(combatants)
+    fun start(combatants: List<CombatantState>): BattleState = resolveResult(
+        BattleState(
+            combatants = combatants,
+            queue = CombatTimeline.initial(combatants)
+        )
     )
 
     fun perform(
