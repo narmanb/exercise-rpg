@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -17,116 +17,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Connect battle vitals and inn restoration
-        if: github.event_name == 'push' && github.ref == 'refs/heads/party-vitals-v1'
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          def patch(path_str, replacements):
-              path = Path(path_str)
-              text = path.read_text()
-              original = text
-              for old, new, expected in replacements:
-                  if new in text:
-                      continue
-                  count = text.count(old)
-                  if count != expected:
-                      raise SystemExit(f'{path}: expected {expected} matches, found {count}: {old[:180]!r}')
-                  text = text.replace(old, new)
-              if text != original:
-                  path.write_text(text)
-
-          patch('app/src/main/java/com/pathofthewild/game/BattleEngine.kt', [
-              (
-                  '''    fun start(combatants: List<CombatantState>): BattleState = BattleState(\n        combatants = combatants,\n        queue = CombatTimeline.initial(combatants)\n    )''',
-                  '''    fun start(combatants: List<CombatantState>): BattleState = resolveResult(\n        BattleState(\n            combatants = combatants,\n            queue = CombatTimeline.initial(combatants)\n        )\n    )''',
-                  1
-              ),
-          ])
-
-          patch('app/src/main/java/com/pathofthewild/game/LocalAreaScreen.kt', [
-              (
-                  '''    onEncounter: (LocalAreaObject) -> Unit,\n    onShop: (LocalAreaObject) -> Unit,\n    onExit: () -> Unit''',
-                  '''    onEncounter: (LocalAreaObject) -> Unit,\n    onShop: (LocalAreaObject) -> Unit,\n    onInn: (LocalAreaObject) -> String,\n    onExit: () -> Unit''',
-                  1
-              ),
-              (
-                  '''            LocalObjectType.Inn -> "${objectHere.name}: resting/healing will be connected later."''',
-                  '''            LocalObjectType.Inn -> onInn(objectHere)''',
-                  1
-              ),
-          ])
-
-          patch('app/src/main/java/com/pathofthewild/game/OverworldScreen.kt', [
-              (
-                  '''    val inventoryStore = remember { InventoryStore(context) }\n    val world = PrototypeOverworld.world''',
-                  '''    val inventoryStore = remember { InventoryStore(context) }\n    val partyVitalsStore = remember { PartyVitalsStore(context) }\n    val world = PrototypeOverworld.world''',
-                  1
-              ),
-              (
-                  '''    localProgressStore.ensureCharacter(characterCreatedAtEpochMs)\n    inventoryStore.ensureCharacter(characterCreatedAtEpochMs)''',
-                  '''    localProgressStore.ensureCharacter(characterCreatedAtEpochMs)\n    inventoryStore.ensureCharacter(characterCreatedAtEpochMs)\n    partyVitalsStore.ensureCharacter(characterCreatedAtEpochMs)''',
-                  1
-              ),
-              (
-                  '''    var activeShop by remember { mutableStateOf<LocalAreaObject?>(null) }\n    var resolvedLocalObjectIds by remember(characterCreatedAtEpochMs) {\n        mutableStateOf(localProgressStore.resolvedObjectIds())\n    }''',
-                  '''    var activeShop by remember { mutableStateOf<LocalAreaObject?>(null) }\n    var resolvedLocalObjectIds by remember(characterCreatedAtEpochMs) {\n        mutableStateOf(localProgressStore.resolvedObjectIds())\n    }\n    var partyVitals by remember(characterCreatedAtEpochMs) { mutableStateOf(partyVitalsStore.load()) }''',
-                  1
-              ),
-              (
-                  '''    fun consumeBattleItem(itemId: String): Boolean {\n        return when (inventoryStore.consume(itemId)) {\n            is InventoryTransaction.Rejected -> false\n            is InventoryTransaction.Success -> {\n                inventoryRevision++\n                true\n            }\n        }\n    }''',
-                  '''    fun consumeBattleItem(itemId: String): Boolean {\n        return when (inventoryStore.consume(itemId)) {\n            is InventoryTransaction.Rejected -> false\n            is InventoryTransaction.Success -> {\n                inventoryRevision++\n                true\n            }\n        }\n    }\n\n    fun persistPartyVitals(combatants: Collection<CombatantState>) {\n        partyVitals = partyVitalsStore.saveBattleResult(combatants)\n    }''',
-                  1
-              ),
-              (
-                  '''            protagonistLevel = protagonistLevel,\n            activeMonsters = activeParty,\n            battleItemQuantities = inventory.quantities,''',
-                  '''            protagonistLevel = protagonistLevel,\n            activeMonsters = activeParty,\n            initialPlayerVitals = partyVitals,\n            onPersistPlayerVitals = ::persistPartyVitals,\n            battleItemQuantities = inventory.quantities,''',
-                  2
-              ),
-              (
-                  '''            onEncounter = { objectHere -> activeLocalEncounter = objectHere },\n            onShop = { objectHere -> activeShop = objectHere },\n            onExit = {''',
-                  '''            onEncounter = { objectHere -> activeLocalEncounter = objectHere },\n            onShop = { objectHere -> activeShop = objectHere },\n            onInn = { objectHere ->\n                partyVitals = partyVitalsStore.fullRestore()\n                "${objectHere.name}: your party is fully restored."\n            },\n            onExit = {''',
-                  1
-              ),
-          ])
-
-          patch('app/src/main/java/com/pathofthewild/game/PrototypeBattleScreen.kt', [
-              (
-                  '''    protagonistLevel: Int = 1,\n    activeMonsters: List<OwnedMonster> = emptyList(),\n    battleItemQuantities: Map<String, Int> = emptyMap(),''',
-                  '''    protagonistLevel: Int = 1,\n    activeMonsters: List<OwnedMonster> = emptyList(),\n    initialPlayerVitals: Map<String, PersistentPartyVitals> = emptyMap(),\n    onPersistPlayerVitals: (Collection<CombatantState>) -> Unit = {},\n    battleItemQuantities: Map<String, Int> = emptyMap(),''',
-                  1
-              ),
-              (
-                  '''    val content = remember(encounterName, protagonistName, protagonistLevel, activeMonsters) {\n        RosterBattleFactory.create(encounterName, protagonistName, protagonistLevel, activeMonsters)\n    }''',
-                  '''    val content = remember(encounterName, protagonistName, protagonistLevel, activeMonsters, initialPlayerVitals) {\n        val base = RosterBattleFactory.create(encounterName, protagonistName, protagonistLevel, activeMonsters)\n        val restoredCombatants = PartyVitalsRules.apply(base.initialState.combatants, initialPlayerVitals)\n        base.copy(initialState = BattleEngine.start(restoredCombatants))\n    }''',
-                  1
-              ),
-              (
-                  '''        showingHeroSkills = false\n        showingHeroItems = false\n    }\n\n    LazyColumn(''',
-                  '''        showingHeroSkills = false\n        showingHeroItems = false\n    }\n\n    fun persistAndRetreat() {\n        onPersistPlayerVitals(state.combatants)\n        onRetreat()\n    }\n\n    LazyColumn(''',
-                  1
-              ),
-              (
-                  '''                    TextButton(onClick = onRetreat) { Text("Retreat") }''',
-                  '''                    TextButton(onClick = ::persistAndRetreat) { Text("Retreat") }''',
-                  1
-              ),
-              (
-                  '''                    onVictory = {\n                        val bondEligible = CombatRules.bondEligibleMonsters(state.combatants)\n                            .mapTo(mutableSetOf()) { it.id }\n                        onVictory(state.capturedEnemyIds, bondEligible)\n                    },\n                    onRetreat = onRetreat''',
-                  '''                    onVictory = {\n                        onPersistPlayerVitals(state.combatants)\n                        val bondEligible = CombatRules.bondEligibleMonsters(state.combatants)\n                            .mapTo(mutableSetOf()) { it.id }\n                        onVictory(state.capturedEnemyIds, bondEligible)\n                    },\n                    onRetreat = ::persistAndRetreat''',
-                  1
-              ),
-          ])
-          PY
-          if ! git diff --quiet -- app/src/main/java/com/pathofthewild/game; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add app/src/main/java/com/pathofthewild/game
-            git commit -m "Persist party vitals across battles and restore at inn"
-            git push origin HEAD:party-vitals-v1
-          fi
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
