@@ -276,6 +276,9 @@ private fun PathOfTheWildApp() {
     var stepLedger by remember { mutableStateOf(fitnessStore.loadStepLedger(profile?.sensorBaseline)) }
     var rewardLedger by remember { mutableStateOf(fitnessStore.loadRewardLedger()) }
     var destination by remember { mutableStateOf(Destination.Home) }
+    val activitySignalStore = remember { ActivitySignalStore(context.applicationContext) }
+    var activitySignal by remember(profile?.createdAtEpochMs) { mutableStateOf(activitySignalStore.load()) }
+    var activitySamplingStatus by remember(profile?.createdAtEpochMs) { mutableStateOf("Waiting for activity permission") }
 
     val readStepsPermission = remember { HealthPermission.getReadPermission(StepsRecord::class) }
     var healthSdkStatus by remember { mutableIntStateOf(HealthConnectClient.getSdkStatus(context)) }
@@ -363,6 +366,35 @@ private fun PathOfTheWildApp() {
         if (healthPermissionGranted) refreshHealth()
     }
 
+    DisposableEffect(profile?.createdAtEpochMs) {
+        val activityPrefs = context.getSharedPreferences(SaveBackupRules.CORE_STORE, Context.MODE_PRIVATE)
+        val activitySignalListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+            activitySignal = activitySignalStore.load()
+        }
+        activitySignal = activitySignalStore.load()
+        activityPrefs.registerOnSharedPreferenceChangeListener(activitySignalListener)
+        onDispose { activityPrefs.unregisterOnSharedPreferenceChangeListener(activitySignalListener) }
+    }
+
+    LaunchedEffect(profile?.createdAtEpochMs, activityPermissionGranted) {
+        if (profile == null) {
+            activitySamplingStatus = "Waiting for character"
+            return@LaunchedEffect
+        }
+        if (!activityPermissionGranted) {
+            activitySamplingStatus = "Permission needed"
+            return@LaunchedEffect
+        }
+        activitySamplingStatus = "Registering"
+        ActivitySignalRegistration.request(
+            context = context,
+            onSuccess = { activitySamplingStatus = "Active — 60 s sampling" },
+            onFailure = { error ->
+                activitySamplingStatus = "Unavailable: ${error.message ?: error::class.java.simpleName}"
+            }
+        )
+    }
+
     DisposableEffect(activityPermissionGranted) {
         val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
         val stepSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
@@ -419,6 +451,11 @@ private fun PathOfTheWildApp() {
     val adventureEarned = rewardLedger.totalAdventurePointsGranted
     val adventureAvailable = max(0L, 4L + adventureEarned - overworldStore.adventureSpent())
     val momentumAvailable = rewardLedger.momentumAvailable
+    val trackingMode = ActivitySignalRules.trackingMode(
+        healthConnected = healthSdkStatus == HealthConnectClient.SDK_AVAILABLE && healthPermissionGranted,
+        hasStepSensor = hasStepSensor,
+        activityPermissionGranted = activityPermissionGranted
+    )
 
     fun spendMomentum(amount: Long): Boolean {
         return when (val result = MomentumRules.spend(rewardLedger, amount)) {
@@ -502,6 +539,9 @@ private fun PathOfTheWildApp() {
                         healthError = healthError,
                         hasStepSensor = hasStepSensor,
                         activityPermissionGranted = activityPermissionGranted,
+                        activitySignal = activitySignal,
+                        activitySamplingStatus = activitySamplingStatus,
+                        trackingMode = trackingMode,
                         rawSensorSteps = rawSensorSteps,
                         sensorDelta = sensorDelta,
                         stepLedger = stepLedger,
@@ -554,6 +594,9 @@ private fun PathOfTheWildApp() {
                     healthError = healthError,
                     hasStepSensor = hasStepSensor,
                     activityPermissionGranted = activityPermissionGranted,
+                        activitySignal = activitySignal,
+                        activitySamplingStatus = activitySamplingStatus,
+                        trackingMode = trackingMode,
                     rawSensorSteps = rawSensorSteps,
                     sensorDelta = sensorDelta,
                     stepLedger = stepLedger,
@@ -618,7 +661,7 @@ private fun CharacterCreationScreen(
                         StatusLine("Device step sensor", sensorStatus)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(onClick = onRequestHealth) { Text("Health Connect") }
-                            OutlinedButton(onClick = onRequestActivity) { Text("Step access") }
+                            OutlinedButton(onClick = onRequestActivity) { Text("Activity access") }
                         }
                         Button(
                             onClick = { onCreate(name.ifBlank { "Adventurer" }) },
@@ -653,6 +696,9 @@ private fun DestinationContent(
     healthError: String?,
     hasStepSensor: Boolean,
     activityPermissionGranted: Boolean,
+    activitySignal: ActivitySignal?,
+    activitySamplingStatus: String,
+    trackingMode: StepTrackingMode,
     rawSensorSteps: Float,
     sensorDelta: Long,
     stepLedger: StepLedgerState,
@@ -676,6 +722,9 @@ private fun DestinationContent(
             healthError = healthError,
             hasStepSensor = hasStepSensor,
             activityPermissionGranted = activityPermissionGranted,
+            activitySignal = activitySignal,
+            activitySamplingStatus = activitySamplingStatus,
+            trackingMode = trackingMode,
             rawSensorSteps = rawSensorSteps,
             sensorDelta = sensorDelta,
             eligibleSteps = eligibleSteps,
@@ -1060,6 +1109,9 @@ private fun DiagnosticsScreen(
     healthError: String?,
     hasStepSensor: Boolean,
     activityPermissionGranted: Boolean,
+    activitySignal: ActivitySignal?,
+    activitySamplingStatus: String,
+    trackingMode: StepTrackingMode,
     rawSensorSteps: Float,
     sensorDelta: Long,
     eligibleSteps: Long,
@@ -1084,6 +1136,7 @@ private fun DiagnosticsScreen(
         item {
             ResponsiveCard {
                 DiagnosticLine("Final in-game eligible steps", eligibleSteps.toString())
+                DiagnosticLine("Current tracking mode", trackingMode.label)
                 DiagnosticLine("Health Connect — today", healthTodaySteps.toString())
                 DiagnosticLine("Health Connect — since character", healthCharacterSteps.toString())
                 DiagnosticLine("Ledger confirmed Health steps", stepLedger.confirmedHealthSteps.toString())
@@ -1103,25 +1156,42 @@ private fun DiagnosticsScreen(
                 DiagnosticLine("Health Connect on-device step collection", if (onDeviceHealthStepsAvailable) "Supported" else "Not supported by this OS/module")
                 DiagnosticLine("Hardware TYPE_STEP_COUNTER", if (hasStepSensor) "Available" else "Unavailable")
                 DiagnosticLine("Activity Recognition permission", if (activityPermissionGranted) "Granted" else "Not granted")
+                DiagnosticLine("Activity Recognition sampler", activitySamplingStatus)
                 healthError?.let { DiagnosticLine("Health Connect error", it) }
                 Spacer(Modifier.height(8.dp))
                 BoxWithConstraints(Modifier.fillMaxWidth()) {
                     if (ResponsivePolicy.useCompactActionRow(maxWidth.value)) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(onClick = onRequestHealth, Modifier.weight(1f)) { Text("Health permission") }
-                            OutlinedButton(onClick = onRequestActivity, Modifier.weight(1f)) { Text("Sensor permission") }
+                            OutlinedButton(onClick = onRequestActivity, Modifier.weight(1f)) { Text("Activity permission") }
                             Button(onClick = onRefreshHealth, Modifier.weight(1f)) { Text("Refresh") }
                         }
                     } else {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(onClick = onRequestHealth, Modifier.fillMaxWidth()) { Text("Health permission") }
-                            OutlinedButton(onClick = onRequestActivity, Modifier.fillMaxWidth()) { Text("Sensor permission") }
+                            OutlinedButton(onClick = onRequestActivity, Modifier.fillMaxWidth()) { Text("Activity permission") }
                             Button(onClick = onRefreshHealth, Modifier.fillMaxWidth()) { Text("Refresh") }
                         }
                     }
                 }
             }
         }
+        item {
+            ResponsiveCard {
+                Text("Activity signal", fontWeight = FontWeight.Bold)
+                val signal = activitySignal
+                if (signal == null) {
+                    Text("Waiting for the first activity sample.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    DiagnosticLine("Most probable activity", signal.kind.label)
+                    DiagnosticLine("Confidence", "${signal.confidence}%")
+                    DiagnosticLine("Signal age", ActivitySignalRules.age(signal, System.currentTimeMillis()).label)
+                    DiagnosticLine("Observed", Instant.ofEpochMilli(signal.observedAtEpochMs).toString())
+                }
+                Text("Observation only — activity recognition does not reject or alter step rewards yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+
         item {
             ResponsiveCard {
                 Text("Character fitness epoch", fontWeight = FontWeight.Bold)
