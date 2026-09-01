@@ -49,7 +49,9 @@ internal class FitnessLedgerStore(context: Context) {
     fun loadRewardLedger(): FitnessRewardState = FitnessRewardState(
         lastRewardedEligibleSteps = prefs.getLong(KEY_LAST_REWARDED_ELIGIBLE, 0L).coerceAtLeast(0L),
         totalWalkingXpGranted = prefs.getLong(KEY_WALKING_XP_GRANTED, 0L).coerceAtLeast(0L),
-        totalAdventurePointsGranted = prefs.getLong(KEY_ADVENTURE_GRANTED, 0L).coerceAtLeast(0L)
+        totalAdventurePointsGranted = prefs.getLong(KEY_ADVENTURE_GRANTED, 0L).coerceAtLeast(0L),
+        totalMomentumGranted = prefs.getLong(KEY_MOMENTUM_GRANTED, 0L).coerceAtLeast(0L),
+        totalMomentumSpent = prefs.getLong(KEY_MOMENTUM_SPENT, 0L).coerceAtLeast(0L)
     )
 
     fun saveRewardLedger(state: FitnessRewardState) {
@@ -57,6 +59,8 @@ internal class FitnessLedgerStore(context: Context) {
             .putLong(KEY_LAST_REWARDED_ELIGIBLE, state.lastRewardedEligibleSteps.coerceAtLeast(0L))
             .putLong(KEY_WALKING_XP_GRANTED, state.totalWalkingXpGranted.coerceAtLeast(0L))
             .putLong(KEY_ADVENTURE_GRANTED, state.totalAdventurePointsGranted.coerceAtLeast(0L))
+            .putLong(KEY_MOMENTUM_GRANTED, state.totalMomentumGranted.coerceAtLeast(0L))
+            .putLong(KEY_MOMENTUM_SPENT, state.totalMomentumSpent.coerceAtLeast(0L))
             .apply()
     }
 
@@ -83,5 +87,7 @@ internal class FitnessLedgerStore(context: Context) {
         private const val KEY_LAST_REWARDED_ELIGIBLE = "fitness_last_rewarded_eligible_steps"
         private const val KEY_WALKING_XP_GRANTED = "fitness_walking_xp_granted"
         private const val KEY_ADVENTURE_GRANTED = "fitness_adventure_points_granted"
+        private const val KEY_MOMENTUM_GRANTED = "fitness_momentum_granted"
+        private const val KEY_MOMENTUM_SPENT = "fitness_momentum_spent"
     }
 }
