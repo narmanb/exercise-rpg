@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
@@ -20,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -49,6 +51,7 @@ internal fun WorkoutScreen(modifier: Modifier = Modifier) {
     var loadUnit by remember { mutableStateOf(WorkoutLoadUnit.Pounds) }
     var setRepsText by remember { mutableStateOf("") }
     var historyRange by remember { mutableStateOf(WorkoutHistoryRange.SevenDays) }
+    var pendingDelete by remember { mutableStateOf<WorkoutEntry?>(null) }
     val recentTemplates = remember(history) { WorkoutQuickReuseRules.recentTemplates(history) }
     val strengthRecords = remember(history) {
         StrengthRecordRules.records(history, nowEpochMs = System.currentTimeMillis())
@@ -56,6 +59,29 @@ internal fun WorkoutScreen(modifier: Modifier = Modifier) {
     val today = LocalDate.now()
     val historySummary = remember(history, historyRange, today) {
         WorkoutHistoryRules.summarize(history, historyRange, today, ZoneId.systemDefault())
+    }
+
+    pendingDelete?.let { entry ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("Delete workout?") },
+            text = {
+                Text(
+                    "Delete ${entry.displayName} (${entry.minutes} min) from training history? This cannot be undone."
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (store.delete(entry.id)) history = store.history()
+                        pendingDelete = null
+                    }
+                ) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) { Text("Cancel") }
+            }
+        )
     }
 
     LazyColumn(
@@ -316,7 +342,7 @@ internal fun WorkoutScreen(modifier: Modifier = Modifier) {
                     val visibleEntries = historySummary.entries.take(50)
                     visibleEntries.forEachIndexed { index, entry ->
                         if (index > 0) HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                        WorkoutHistoryRow(entry)
+                        WorkoutHistoryRow(entry, onDeleteRequested = { pendingDelete = entry })
                     }
                     if (historySummary.entries.size > visibleEntries.size) {
                         Spacer(Modifier.height(8.dp))
@@ -446,7 +472,10 @@ private fun WorkoutCategorySelector(
 }
 
 @Composable
-private fun WorkoutHistoryRow(entry: WorkoutEntry) {
+private fun WorkoutHistoryRow(
+    entry: WorkoutEntry,
+    onDeleteRequested: () -> Unit
+) {
     val formatter = remember { DateTimeFormatter.ofPattern("MMM d, yyyy · h:mm a") }
     val whenText = entry.performedAt.atZone(ZoneId.systemDefault()).format(formatter)
     val summary = if (entry.name.isBlank()) {
@@ -466,5 +495,8 @@ private fun WorkoutHistoryRow(entry: WorkoutEntry) {
         }
         entry.effort?.let { Text("Effort $it/10", color = MaterialTheme.colorScheme.onSurfaceVariant) }
         if (entry.note.isNotBlank()) Text(entry.note)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = onDeleteRequested) { Text("Delete") }
+        }
     }
 }
