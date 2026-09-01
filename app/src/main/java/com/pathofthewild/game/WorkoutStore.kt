@@ -120,8 +120,23 @@ internal class WorkoutStore(context: Context) {
             strength = WorkoutStrengthRules.sanitize(category, load, loadUnit, setReps)
         )
         val updated = (listOf(entry) + history()).take(MAX_STORED_WORKOUTS)
+        persist(updated)
+        return entry
+    }
+
+    fun delete(id: Long): Boolean {
+        val current = history()
+        val updated = WorkoutHistoryMutationRules.removeById(current, id)
+        if (updated.size == current.size) return false
+        persist(updated)
+        return true
+    }
+
+    fun totalMinutes(): Long = history().sumOf { it.minutes.toLong() }
+
+    private fun persist(history: List<WorkoutEntry>) {
         val array = JSONArray()
-        updated.forEach { item ->
+        history.take(MAX_STORED_WORKOUTS).forEach { item ->
             val reps = JSONArray()
             item.strength.setReps.forEach(reps::put)
             array.put(
@@ -139,10 +154,7 @@ internal class WorkoutStore(context: Context) {
             )
         }
         prefs.edit().putString(KEY_WORKOUTS, array.toString()).apply()
-        return entry
     }
-
-    fun totalMinutes(): Long = history().sumOf { it.minutes.toLong() }
 
     companion object {
         private const val KEY_WORKOUTS = "workout_history"
