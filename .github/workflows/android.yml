@@ -2,13 +2,13 @@ name: Android CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, battle-items-v2 ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -17,6 +17,142 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Connect multi-item battle flow
+        if: github.event_name == 'push' && github.ref == 'refs/heads/battle-items-v2'
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def patch(path_str, replacements):
+              path = Path(path_str)
+              text = path.read_text()
+              original = text
+              for old, new, expected in replacements:
+                  if new in text:
+                      continue
+                  count = text.count(old)
+                  if count != expected:
+                      raise SystemExit(f'{path}: expected {expected} matches, found {count}: {old[:180]!r}')
+                  text = text.replace(old, new)
+              if text != original:
+                  path.write_text(text)
+
+          patch('app/src/main/java/com/pathofthewild/game/CombatModel.kt', [
+              (
+                  '''    Heal,\n    Defend,''',
+                  '''    Heal,\n    RestoreMp,\n    Defend,''',
+                  1
+              ),
+          ])
+
+          patch('app/src/main/java/com/pathofthewild/game/BattleEngine.kt', [
+              (
+                  '''            CombatActionKind.Heal -> {\n                if (target != null) {\n                    val currentTarget = combatants.first { it.id == target.id }\n                    val healed = currentTarget.copy(hp = (currentTarget.hp + technique.power).coerceAtMost(currentTarget.maxHp))\n                    combatants = replaceCombatant(combatants, healed)\n                    logLine = "${actor.name} restores ${technique.power} HP to ${target.name}."\n                }\n            }\n            CombatActionKind.Capture -> {''',
+                  '''            CombatActionKind.Heal -> {\n                if (target != null) {\n                    val currentTarget = combatants.first { it.id == target.id }\n                    val healed = currentTarget.copy(hp = (currentTarget.hp + technique.power).coerceAtMost(currentTarget.maxHp))\n                    combatants = replaceCombatant(combatants, healed)\n                    logLine = "${actor.name} restores ${technique.power} HP to ${target.name}."\n                }\n            }\n            CombatActionKind.RestoreMp -> {\n                if (target != null) {\n                    val currentTarget = combatants.first { it.id == target.id }\n                    val restored = currentTarget.copy(mp = (currentTarget.mp + technique.power).coerceAtMost(currentTarget.maxMp))\n                    combatants = replaceCombatant(combatants, restored)\n                    logLine = "${actor.name} restores ${technique.power} MP to ${target.name}."\n                }\n            }\n            CombatActionKind.Capture -> {''',
+                  1
+              ),
+          ])
+
+          patch('app/src/main/java/com/pathofthewild/game/PrototypeBattleData.kt', [
+              (
+                  '''    val heroItem: CombatTechnique,\n    val heroDefend: CombatTechnique,''',
+                  '''    val heroItem: CombatTechnique,\n    val heroFocusDraught: CombatTechnique,\n    val heroDefend: CombatTechnique,''',
+                  1
+              ),
+              (
+                  '''        val potion = CombatTechnique(\n            id = "potion",\n            name = "Field Tonic",\n            kind = CombatActionKind.Heal,\n            targetMode = CombatTargetMode.AllySingle,\n            power = 70,\n            actionDelay = 90\n        )\n        val defend = CombatTechnique(''',
+                  '''        val potion = CombatTechnique(\n            id = ItemCatalog.fieldTonic.id,\n            name = ItemCatalog.fieldTonic.name,\n            kind = CombatActionKind.Heal,\n            targetMode = CombatTargetMode.AllySingle,\n            power = ItemCatalog.fieldTonic.power,\n            actionDelay = 90\n        )\n        val focusDraught = CombatTechnique(\n            id = ItemCatalog.focusDraught.id,\n            name = ItemCatalog.focusDraught.name,\n            kind = CombatActionKind.RestoreMp,\n            targetMode = CombatTargetMode.AllySingle,\n            power = ItemCatalog.focusDraught.power,\n            actionDelay = 85\n        )\n        val defend = CombatTechnique(''',
+                  1
+              ),
+              (
+                  '''            heroSkills = listOf(quickSlash, arcBolt),\n            heroItem = potion,\n            heroDefend = defend,''',
+                  '''            heroSkills = listOf(quickSlash, arcBolt),\n            heroItem = potion,\n            heroFocusDraught = focusDraught,\n            heroDefend = defend,''',
+                  1
+              ),
+          ])
+
+          patch('app/src/main/java/com/pathofthewild/game/RosterBattleFactory.kt', [
+              (
+                  '''        val potion = CombatTechnique(\n            id = "potion",\n            name = ItemCatalog.fieldTonic.name,\n            kind = CombatActionKind.Heal,\n            targetMode = CombatTargetMode.AllySingle,\n            power = ItemCatalog.fieldTonic.power,\n            actionDelay = 90\n        )\n        val defend = CombatTechnique(''',
+                  '''        val potion = CombatTechnique(\n            id = ItemCatalog.fieldTonic.id,\n            name = ItemCatalog.fieldTonic.name,\n            kind = CombatActionKind.Heal,\n            targetMode = CombatTargetMode.AllySingle,\n            power = ItemCatalog.fieldTonic.power,\n            actionDelay = 90\n        )\n        val focusDraught = CombatTechnique(\n            id = ItemCatalog.focusDraught.id,\n            name = ItemCatalog.focusDraught.name,\n            kind = CombatActionKind.RestoreMp,\n            targetMode = CombatTargetMode.AllySingle,\n            power = ItemCatalog.focusDraught.power,\n            actionDelay = 85\n        )\n        val defend = CombatTechnique(''',
+                  1
+              ),
+              (
+                  '''            heroSkills = listOf(quickSlash, arcBolt),\n            heroItem = potion,\n            heroDefend = defend,''',
+                  '''            heroSkills = listOf(quickSlash, arcBolt),\n            heroItem = potion,\n            heroFocusDraught = focusDraught,\n            heroDefend = defend,''',
+                  1
+              ),
+          ])
+
+          patch('app/src/main/java/com/pathofthewild/game/OverworldScreen.kt', [
+              (
+                  '''    fun consumeFieldTonic(): Boolean {\n        return when (inventoryStore.consume(ItemCatalog.fieldTonic.id)) {\n            is InventoryTransaction.Rejected -> false\n            is InventoryTransaction.Success -> {\n                inventoryRevision++\n                true\n            }\n        }\n    }''',
+                  '''    fun consumeBattleItem(itemId: String): Boolean {\n        return when (inventoryStore.consume(itemId)) {\n            is InventoryTransaction.Rejected -> false\n            is InventoryTransaction.Success -> {\n                inventoryRevision++\n                true\n            }\n        }\n    }''',
+                  1
+              ),
+              (
+                  '''            fieldTonicCount = inventory.quantity(ItemCatalog.fieldTonic.id),\n            onConsumeFieldTonic = ::consumeFieldTonic,''',
+                  '''            battleItemQuantities = inventory.quantities,\n            onConsumeBattleItem = ::consumeBattleItem,''',
+                  2
+              ),
+          ])
+
+          patch('app/src/main/java/com/pathofthewild/game/PrototypeBattleScreen.kt', [
+              (
+                  '''    activeMonsters: List<OwnedMonster> = emptyList(),\n    fieldTonicCount: Int = 0,\n    onConsumeFieldTonic: () -> Boolean = { false },\n    onVictory:''',
+                  '''    activeMonsters: List<OwnedMonster> = emptyList(),\n    battleItemQuantities: Map<String, Int> = emptyMap(),\n    onConsumeBattleItem: (String) -> Boolean = { false },\n    onVictory:''',
+                  1
+              ),
+              (
+                  '''    var pendingTechnique by remember { mutableStateOf<CombatTechnique?>(null) }\n    var showingHeroSkills by remember { mutableStateOf(false) }''',
+                  '''    var pendingTechnique by remember { mutableStateOf<CombatTechnique?>(null) }\n    var showingHeroSkills by remember { mutableStateOf(false) }\n    var showingHeroItems by remember { mutableStateOf(false) }\n    val battleItemIds = setOf(content.heroItem.id, content.heroFocusDraught.id)''',
+                  1
+              ),
+              (
+                  '''        pendingTechnique = null\n        showingHeroSkills = false\n        val enemy =''',
+                  '''        pendingTechnique = null\n        showingHeroSkills = false\n        showingHeroItems = false\n        val enemy =''',
+                  1
+              ),
+              (
+                  '''        if (!CombatRules.canPayMp(actor, technique)) return\n        if (technique.id == content.heroItem.id && fieldTonicCount <= 0) return''',
+                  '''        if (!CombatRules.canPayMp(actor, technique)) return\n        if (technique.id in battleItemIds && (battleItemQuantities[technique.id] ?: 0) <= 0) return''',
+                  1
+              ),
+              (
+                  '''                state = BattleEngine.perform(state, technique)\n                pendingTechnique = null\n                showingHeroSkills = false''',
+                  '''                state = BattleEngine.perform(state, technique)\n                pendingTechnique = null\n                showingHeroSkills = false\n                showingHeroItems = false''',
+                  1
+              ),
+              (
+                  '''        if (targetId !in pendingTargetIds) return\n        if (technique.id == content.heroItem.id && !onConsumeFieldTonic()) {\n            pendingTechnique = null\n            return\n        }\n        state = BattleEngine.perform(state, technique, targetId)\n        pendingTechnique = null\n        showingHeroSkills = false''',
+                  '''        if (targetId !in pendingTargetIds) return\n        if (technique.id in battleItemIds && !onConsumeBattleItem(technique.id)) {\n            pendingTechnique = null\n            return\n        }\n        state = BattleEngine.perform(state, technique, targetId)\n        pendingTechnique = null\n        showingHeroSkills = false\n        showingHeroItems = false''',
+                  1
+              ),
+              (
+                  '''                    active = active,\n                    content = content,\n                    fieldTonicCount = fieldTonicCount,\n                    showingHeroSkills = showingHeroSkills,\n                    onShowHeroSkills = { showingHeroSkills = true },\n                    onBackFromHeroSkills = { showingHeroSkills = false },\n                    onChooseTechnique = ::chooseTechnique,''',
+                  '''                    active = active,\n                    content = content,\n                    battleItemQuantities = battleItemQuantities,\n                    showingHeroSkills = showingHeroSkills,\n                    showingHeroItems = showingHeroItems,\n                    onShowHeroSkills = { showingHeroSkills = true },\n                    onBackFromHeroSkills = { showingHeroSkills = false },\n                    onShowHeroItems = { showingHeroItems = true },\n                    onBackFromHeroItems = { showingHeroItems = false },\n                    onChooseTechnique = ::chooseTechnique,''',
+                  1
+              ),
+              (
+                  '''    active: CombatantState?,\n    content: PrototypeBattleContent,\n    fieldTonicCount: Int,\n    showingHeroSkills: Boolean,\n    onShowHeroSkills: () -> Unit,\n    onBackFromHeroSkills: () -> Unit,\n    onChooseTechnique:''',
+                  '''    active: CombatantState?,\n    content: PrototypeBattleContent,\n    battleItemQuantities: Map<String, Int>,\n    showingHeroSkills: Boolean,\n    showingHeroItems: Boolean,\n    onShowHeroSkills: () -> Unit,\n    onBackFromHeroSkills: () -> Unit,\n    onShowHeroItems: () -> Unit,\n    onBackFromHeroItems: () -> Unit,\n    onChooseTechnique:''',
+                  1
+              ),
+              (
+                  '''        if (active.kind == CombatantKind.Adventurer) {\n            if (showingHeroSkills) {\n                ActionGrid(\n                    actions = content.heroSkills,\n                    active = active,\n                    onChoose = onChooseTechnique\n                )\n                Spacer(Modifier.height(6.dp))\n                OutlinedButton(onClick = onBackFromHeroSkills, Modifier.fillMaxWidth()) { Text("Back") }\n            } else {\n                val commandActions = listOf(\n                    CommandChoice("Attack") { onChooseTechnique(content.heroAttack) },\n                    CommandChoice("Skills", action = onShowHeroSkills),\n                    CommandChoice("Item · Tonic ×$fieldTonicCount", enabled = fieldTonicCount > 0) { onChooseTechnique(content.heroItem) },\n                    CommandChoice("Defend") { onChooseTechnique(content.heroDefend) },\n                    CommandChoice("Capture") { onChooseTechnique(content.heroCapture) }\n                )\n                CommandChoiceGrid(commandActions)\n            }\n        } else {''',
+                  '''        if (active.kind == CombatantKind.Adventurer) {\n            if (showingHeroSkills) {\n                ActionGrid(\n                    actions = content.heroSkills,\n                    active = active,\n                    onChoose = onChooseTechnique\n                )\n                Spacer(Modifier.height(6.dp))\n                OutlinedButton(onClick = onBackFromHeroSkills, Modifier.fillMaxWidth()) { Text("Back") }\n            } else if (showingHeroItems) {\n                val tonicCount = battleItemQuantities[content.heroItem.id] ?: 0\n                val draughtCount = battleItemQuantities[content.heroFocusDraught.id] ?: 0\n                CommandChoiceGrid(\n                    listOf(\n                        CommandChoice("${content.heroItem.name} ×$tonicCount", enabled = tonicCount > 0) {\n                            onChooseTechnique(content.heroItem)\n                        },\n                        CommandChoice("${content.heroFocusDraught.name} ×$draughtCount", enabled = draughtCount > 0) {\n                            onChooseTechnique(content.heroFocusDraught)\n                        }\n                    )\n                )\n                Spacer(Modifier.height(6.dp))\n                OutlinedButton(onClick = onBackFromHeroItems, Modifier.fillMaxWidth()) { Text("Back") }\n            } else {\n                val commandActions = listOf(\n                    CommandChoice("Attack") { onChooseTechnique(content.heroAttack) },\n                    CommandChoice("Skills", action = onShowHeroSkills),\n                    CommandChoice("Item", action = onShowHeroItems),\n                    CommandChoice("Defend") { onChooseTechnique(content.heroDefend) },\n                    CommandChoice("Capture") { onChooseTechnique(content.heroCapture) }\n                )\n                CommandChoiceGrid(commandActions)\n            }\n        } else {''',
+                  1
+              ),
+          ])
+          PY
+          if ! git diff --quiet -- app/src/main/java/com/pathofthewild/game; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add app/src/main/java/com/pathofthewild/game
+            git commit -m "Add battle item submenu and MP restoration"
+            git push origin HEAD:battle-items-v2
+          fi
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
