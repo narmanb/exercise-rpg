@@ -2,13 +2,13 @@ name: Android CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, tracking-status-v1 ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -17,6 +17,132 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Connect player fitness tracking status
+        if: github.event_name == 'push' && github.ref == 'refs/heads/tracking-status-v1'
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/main/java/com/pathofthewild/game/MainActivity.kt')
+          lines = path.read_text().splitlines()
+
+          if not any('var healthLastSyncEpochMs by remember' in line for line in lines):
+              reward = next(i for i, line in enumerate(lines) if 'var rewardLedger by remember' in line)
+              lines[reward + 1:reward + 1] = [
+                  '    var healthLastSyncEpochMs by remember(profile?.createdAtEpochMs) {',
+                  '        mutableStateOf(fitnessStore.loadLastHealthSyncEpochMs())',
+                  '    }',
+              ]
+
+          if not any('fitnessStore.saveLastHealthSyncEpochMs(syncEpochMs)' in line for line in lines):
+              refresh_start = next(i for i, line in enumerate(lines) if line.strip() == 'suspend fun refreshHealth() {')
+              error_null = next(i for i in range(refresh_start, len(lines)) if lines[i].strip() == 'healthError = null')
+              lines[error_null + 1:error_null + 1] = [
+                  '            if (p != null) {',
+                  '                val syncEpochMs = System.currentTimeMillis()',
+                  '                healthLastSyncEpochMs = syncEpochMs',
+                  '                fitnessStore.saveLastHealthSyncEpochMs(syncEpochMs)',
+                  '            }',
+              ]
+
+          if not any('healthLastSyncEpochMs = null' in line for line in lines):
+              reset = next(i for i, line in enumerate(lines) if 'fitnessStore.resetForNewCharacter(sensorBaseline)' in line)
+              lines[reset + 1:reset + 1] = ['                healthLastSyncEpochMs = null']
+
+          creation_start = next(i for i, line in enumerate(lines) if line.strip() == 'private fun CharacterCreationScreen(')
+          destination_calls = [i for i, line in enumerate(lines[:creation_start]) if line.strip() == 'healthCharacterSteps = healthCharacterSteps,']
+          for index in reversed(destination_calls):
+              nearby = '\n'.join(lines[index:index + 5])
+              if 'healthLastSyncEpochMs = healthLastSyncEpochMs' not in nearby:
+                  lines[index + 1:index + 1] = ['                        healthLastSyncEpochMs = healthLastSyncEpochMs,']
+
+          destination_start = next(i for i, line in enumerate(lines) if line.strip() == 'private fun DestinationContent(')
+          destination_end = next(i for i in range(destination_start + 1, len(lines)) if lines[i].strip() == ') {')
+          if not any('healthLastSyncEpochMs: Long?' in line for line in lines[destination_start:destination_end + 1]):
+              health_character = next(i for i in range(destination_start, destination_end) if lines[i].strip() == 'healthCharacterSteps: Long,')
+              lines[health_character + 1:health_character + 1] = ['    healthLastSyncEpochMs: Long?,']
+
+          destination_start = next(i for i, line in enumerate(lines) if line.strip() == 'private fun DestinationContent(')
+          home_line = next(i for i in range(destination_start, len(lines)) if 'Destination.Home -> HomeScreen(' in lines[i])
+          if lines[home_line].strip().startswith('Destination.Home -> HomeScreen(modifier,'):
+              lines[home_line:home_line + 1] = [
+                  '        Destination.Home -> HomeScreen(',
+                  '            modifier = modifier,',
+                  '            profile = profile,',
+                  '            eligibleSteps = eligibleSteps,',
+                  '            walkingXp = walkingXp,',
+                  '            levelProgress = levelProgress,',
+                  '            adventureAvailable = adventureAvailable,',
+                  '            momentumAvailable = momentumAvailable,',
+                  '            store = store,',
+                  '            trackingContent = {',
+                  '                FitnessTrackingPanel(',
+                  '                    trackingMode = trackingMode,',
+                  '                    healthStatus = healthStatusLabel(healthSdkStatus, healthPermissionGranted),',
+                  '                    healthPermissionGranted = healthPermissionGranted,',
+                  '                    healthLastSyncEpochMs = healthLastSyncEpochMs,',
+                  '                    sensorStatus = sensorStatusLabel(hasStepSensor, activityPermissionGranted),',
+                  '                    activityPermissionGranted = activityPermissionGranted,',
+                  '                    activitySamplingStatus = activitySamplingStatus,',
+                  '                    activitySignal = activitySignal,',
+                  '                    onRequestHealth = onRequestHealth,',
+                  '                    onRequestActivity = onRequestActivity',
+                  '                )',
+                  '            }',
+                  '        )',
+              ]
+
+          destination_start = next(i for i, line in enumerate(lines) if line.strip() == 'private fun DestinationContent(')
+          diagnostics_call = next(i for i in range(destination_start, len(lines)) if 'Destination.Diagnostics -> DiagnosticsScreen(' in lines[i])
+          diagnostics_call_end = next(i for i in range(diagnostics_call, len(lines)) if lines[i].strip() == ')')
+          call_text = '\n'.join(lines[diagnostics_call:diagnostics_call_end + 1])
+          if 'healthLastSyncEpochMs = healthLastSyncEpochMs' not in call_text:
+              health_character = next(i for i in range(diagnostics_call, diagnostics_call_end) if lines[i].strip() == 'healthCharacterSteps = healthCharacterSteps,')
+              lines[health_character + 1:health_character + 1] = ['            healthLastSyncEpochMs = healthLastSyncEpochMs,']
+
+          home_start = next(i for i, line in enumerate(lines) if line.strip() == 'private fun HomeScreen(')
+          home_end = next(i for i in range(home_start + 1, len(lines)) if lines[i].strip() == ') {')
+          if not any('trackingContent: @Composable () -> Unit' in line for line in lines[home_start:home_end + 1]):
+              store_line = next(i for i in range(home_start, home_end) if lines[i].strip() == 'store: GameStore')
+              lines[store_line] = '    store: GameStore,'
+              lines[store_line + 1:store_line + 1] = ['    trackingContent: @Composable () -> Unit']
+
+          if not any('item { trackingContent() }' in line for line in lines):
+              home_start = next(i for i, line in enumerate(lines) if line.strip() == 'private fun HomeScreen(')
+              walking_rewards = next(i for i in range(home_start, len(lines)) if 'Text("Walking rewards"' in lines[i])
+              item_start = walking_rewards
+              while item_start >= home_start and lines[item_start].strip() != 'item {':
+                  item_start -= 1
+              if item_start < home_start:
+                  raise SystemExit('Walking rewards item anchor not found')
+              lines[item_start:item_start] = [
+                  '        item { trackingContent() }',
+                  '',
+              ]
+
+          diagnostics_start = next(i for i, line in enumerate(lines) if line.strip() == 'private fun DiagnosticsScreen(')
+          diagnostics_end = next(i for i in range(diagnostics_start + 1, len(lines)) if lines[i].strip() == ') {')
+          if not any('healthLastSyncEpochMs: Long?' in line for line in lines[diagnostics_start:diagnostics_end + 1]):
+              health_character = next(i for i in range(diagnostics_start, diagnostics_end) if lines[i].strip() == 'healthCharacterSteps: Long,')
+              lines[health_character + 1:health_character + 1] = ['    healthLastSyncEpochMs: Long?,']
+
+          if not any('DiagnosticLine("Health Connect last successful sync"' in line for line in lines):
+              diagnostics_start = next(i for i, line in enumerate(lines) if line.strip() == 'private fun DiagnosticsScreen(')
+              health_since_character = next(i for i in range(diagnostics_start, len(lines)) if 'DiagnosticLine("Health Connect — since character"' in lines[i])
+              lines[health_since_character + 1:health_since_character + 1] = [
+                  '                DiagnosticLine("Health Connect last successful sync", healthLastSyncEpochMs?.let { Instant.ofEpochMilli(it).toString() } ?: "Not yet")',
+              ]
+
+          path.write_text('\n'.join(lines) + '\n')
+          PY
+          if ! git diff --quiet -- app/src/main/java/com/pathofthewild/game/MainActivity.kt; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add app/src/main/java/com/pathofthewild/game/MainActivity.kt
+            git commit -m "Show player fitness tracking status"
+            git push origin HEAD:tracking-status-v1
+          fi
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
