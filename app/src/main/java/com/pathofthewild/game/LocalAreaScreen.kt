@@ -43,8 +43,9 @@ internal fun LocalAreaScreen(
     position: GridPoint,
     resolvedObjectIds: Set<String>,
     onPositionChanged: (GridPoint) -> Unit,
-    onResolveObject: (LocalAreaObject) -> Unit,
+    onResolveObject: (LocalAreaObject) -> String,
     onEncounter: (LocalAreaObject) -> Unit,
+    onShop: (LocalAreaObject) -> Unit,
     onExit: () -> Unit
 ) {
     var message by remember(area.id) {
@@ -65,14 +66,16 @@ internal fun LocalAreaScreen(
                 "Leaving ${area.name}."
             }
             LocalObjectType.Npc -> "You approach ${objectHere.name}. Dialogue comes in a later content pass."
-            LocalObjectType.Shop -> "${objectHere.name}: shop inventory comes in a later RPG pass."
+            LocalObjectType.Shop -> {
+                onShop(objectHere)
+                "Entering ${objectHere.name}."
+            }
             LocalObjectType.Inn -> "${objectHere.name}: resting/healing will be connected later."
             LocalObjectType.Chest -> {
                 if (objectHere.id in resolvedObjectIds) {
                     "${objectHere.name} is empty."
                 } else {
                     onResolveObject(objectHere)
-                    "Opened ${objectHere.name}. The chest is now permanently recorded as opened; item rewards will connect with inventory."
                 }
             }
             LocalObjectType.Encounter -> {
