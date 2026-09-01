@@ -87,9 +87,25 @@ class RosterBattleFactoryTest {
             activeMonsters = emptyList()
         )
 
+        assertEquals(ItemCatalog.fieldTonic.id, content.heroItem.id)
         assertEquals(ItemCatalog.fieldTonic.name, content.heroItem.name)
         assertEquals(ItemCatalog.fieldTonic.power, content.heroItem.power)
         assertEquals(CombatActionKind.Heal, content.heroItem.kind)
+    }
+
+    @Test
+    fun heroFocusDraughtUsesInventoryCatalogDefinition() {
+        val content = RosterBattleFactory.create(
+            encounterName = "Wildling Pack",
+            protagonistName = "Hero",
+            protagonistLevel = 12,
+            activeMonsters = emptyList()
+        )
+
+        assertEquals(ItemCatalog.focusDraught.id, content.heroFocusDraught.id)
+        assertEquals(ItemCatalog.focusDraught.name, content.heroFocusDraught.name)
+        assertEquals(ItemCatalog.focusDraught.power, content.heroFocusDraught.power)
+        assertEquals(CombatActionKind.RestoreMp, content.heroFocusDraught.kind)
     }
 
     private fun owned(id: String, species: String, slot: PlayerFormationSlot?) = OwnedMonster(
