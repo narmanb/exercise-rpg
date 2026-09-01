@@ -125,26 +125,15 @@ internal object RosterBattleFactory {
         activeMonsters: List<OwnedMonster>
     ): PrototypeBattleContent {
         val level = protagonistLevel.coerceAtLeast(1)
-        val heroMaxHp = 230 + (level - 1) * 24
-        val heroMaxMp = 45 + (level - 1) * 3
-        val hero = CombatantState(
-            id = "hero",
-            name = protagonistName.ifBlank { "Adventurer" },
-            side = CombatSide.Player,
-            kind = CombatantKind.Adventurer,
-            maxHp = heroMaxHp,
-            hp = heroMaxHp,
-            maxMp = heroMaxMp,
-            mp = heroMaxMp,
-            speed = 18 + (level - 1) / 4,
-            playerSlot = PlayerFormationSlot.Adventurer
-        )
-
         val partyMonsters = activeMonsters
             .filter { it.partySlot in MonsterRosterStore.MONSTER_PARTY_SLOTS }
             .distinctBy { it.partySlot }
             .take(MonsterRosterStore.MONSTER_PARTY_SLOTS.size)
-        val playerCombatants = partyMonsters.mapNotNull { MonsterBattleLibrary.playerCombatant(it, level) }
+        val playerCombatants = PlayerPartyFactory.activeCombatants(
+            protagonistName = protagonistName,
+            protagonistLevel = level,
+            activeMonsters = partyMonsters
+        )
 
         val enemySpecies = if (encounterName.contains("River", ignoreCase = true)) {
             listOf("river_stalker", "wisp")
@@ -217,7 +206,7 @@ internal object RosterBattleFactory {
         val enemyTechniques = enemySpecies.associateWith(MonsterBattleLibrary::enemyTechniqueFor)
 
         return PrototypeBattleContent(
-            initialState = BattleEngine.start(listOf(hero) + playerCombatants + enemies),
+            initialState = BattleEngine.start(playerCombatants + enemies),
             heroAttack = heroAttack,
             heroSkills = listOf(quickSlash, arcBolt),
             heroItem = potion,
