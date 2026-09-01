@@ -29,13 +29,28 @@ internal class SaveBackupStore(private val context: Context) {
         }
     }
 
-    internal fun capture(): SaveBackupSnapshot = SaveBackupSnapshot(
-        stores = SaveBackupRules.REQUIRED_STORES.associateWith { storeName ->
-            preferences(storeName).all.mapValues { (_, rawValue) ->
-                rawValue.toBackupValue()
+    internal fun capture(): SaveBackupSnapshot {
+        ensureCharacterScopedStores()
+        return SaveBackupSnapshot(
+            stores = SaveBackupRules.REQUIRED_STORES.associateWith { storeName ->
+                preferences(storeName).all.mapValues { (_, rawValue) ->
+                    rawValue.toBackupValue()
+                }
             }
-        }
-    )
+        )
+    }
+
+    private fun ensureCharacterScopedStores() {
+        val created = preferences(SaveBackupRules.CORE_STORE)
+            .getLong("character_created", 0L)
+        if (created <= 0L) return
+
+        OverworldProgressStore(context).ensureCharacter(created)
+        LocalAreaProgressStore(context).ensureCharacter(created)
+        MonsterRosterStore(context).ensureCharacter(created)
+        InventoryStore(context).ensureCharacter(created)
+        PartyVitalsStore(context).ensureCharacter(created)
+    }
 
     private fun restore(snapshot: SaveBackupSnapshot): Boolean {
         if (SaveBackupRules.validate(snapshot) != null) return false
