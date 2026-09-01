@@ -50,6 +50,9 @@ internal fun WorkoutScreen(modifier: Modifier = Modifier) {
     var setRepsText by remember { mutableStateOf("") }
     var historyRange by remember { mutableStateOf(WorkoutHistoryRange.SevenDays) }
     val recentTemplates = remember(history) { WorkoutQuickReuseRules.recentTemplates(history) }
+    val strengthRecords = remember(history) {
+        StrengthRecordRules.records(history, nowEpochMs = System.currentTimeMillis())
+    }
     val today = LocalDate.now()
     val historySummary = remember(history, historyRange, today) {
         WorkoutHistoryRules.summarize(history, historyRange, today, ZoneId.systemDefault())
@@ -105,6 +108,41 @@ internal fun WorkoutScreen(modifier: Modifier = Modifier) {
                                     Text(strengthSummary, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
+                        }
+                    }
+                }
+            }
+        }
+        if (strengthRecords.isNotEmpty()) {
+            item {
+                WorkoutCard {
+                    Text("Strength records", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Personal bests are derived from named strength entries. They are tracking only and grant no RPG rewards.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    strengthRecords.forEachIndexed { index, record ->
+                        if (index > 0) HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(record.name, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "${record.sessionCount} session${if (record.sessionCount == 1) "" else "s"}",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        val latestSummary = WorkoutStrengthRules.summary(record.latestDetails)
+                        if (latestSummary.isNotBlank()) {
+                            Text("Last: $latestSummary", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        val bestParts = buildList {
+                            val bestLoad = StrengthRecordRules.formatLoad(record.bestLoad)
+                            if (bestLoad.isNotBlank()) add("load $bestLoad")
+                            record.bestSetReps?.let { add("set $it reps") }
+                            record.bestSessionReps?.let { add("session $it reps") }
+                        }
+                        if (bestParts.isNotEmpty()) {
+                            Text("Best: ${bestParts.joinToString(" · ")}", fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
