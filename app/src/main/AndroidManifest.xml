@@ -2,6 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    <uses-permission android:name="com.google.android.gms.permission.ACTIVITY_RECOGNITION" />
     <uses-permission android:name="android.permission.health.READ_STEPS" />
 
     <queries>
@@ -30,6 +31,11 @@
                 <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
             </intent-filter>
         </activity-alias>
+
+        <receiver
+            android:name=".ActivitySignalReceiver"
+            android:enabled="true"
+            android:exported="false" />
 
         <activity
             android:name=".MainActivity"
