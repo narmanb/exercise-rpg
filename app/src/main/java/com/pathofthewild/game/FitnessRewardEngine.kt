@@ -8,6 +8,7 @@ package com.pathofthewild.game
  */
 internal object FitnessRewardEngine {
     const val PROTOTYPE_STEPS_PER_ADVENTURE_POINT = 500L
+    const val PROTOTYPE_STEPS_PER_MOMENTUM = 500L
 
     fun applyEligibleSteps(
         state: FitnessRewardState,
@@ -19,18 +20,23 @@ internal object FitnessRewardEngine {
         val newWalkingXp = RpgProgression.walkingXpFromEligibleSteps(monotonicEligible)
         val previousAdventure = state.lastRewardedEligibleSteps / PROTOTYPE_STEPS_PER_ADVENTURE_POINT
         val newAdventure = monotonicEligible / PROTOTYPE_STEPS_PER_ADVENTURE_POINT
+        val previousMomentum = state.lastRewardedEligibleSteps / PROTOTYPE_STEPS_PER_MOMENTUM
+        val newMomentum = monotonicEligible / PROTOTYPE_STEPS_PER_MOMENTUM
 
         val walkingXpDelta = (newWalkingXp - previousWalkingXp).coerceAtLeast(0L)
         val adventureDelta = (newAdventure - previousAdventure).coerceAtLeast(0L)
+        val momentumDelta = (newMomentum - previousMomentum).coerceAtLeast(0L)
 
         return FitnessRewardResult(
             state = state.copy(
                 lastRewardedEligibleSteps = monotonicEligible,
                 totalWalkingXpGranted = state.totalWalkingXpGranted + walkingXpDelta,
-                totalAdventurePointsGranted = state.totalAdventurePointsGranted + adventureDelta
+                totalAdventurePointsGranted = state.totalAdventurePointsGranted + adventureDelta,
+                totalMomentumGranted = state.totalMomentumGranted + momentumDelta
             ),
             walkingXpGranted = walkingXpDelta,
-            adventurePointsGranted = adventureDelta
+            adventurePointsGranted = adventureDelta,
+            momentumGranted = momentumDelta
         )
     }
 }
@@ -38,11 +44,17 @@ internal object FitnessRewardEngine {
 internal data class FitnessRewardState(
     val lastRewardedEligibleSteps: Long = 0L,
     val totalWalkingXpGranted: Long = 0L,
-    val totalAdventurePointsGranted: Long = 0L
-)
+    val totalAdventurePointsGranted: Long = 0L,
+    val totalMomentumGranted: Long = 0L,
+    val totalMomentumSpent: Long = 0L
+) {
+    val momentumAvailable: Long
+        get() = (totalMomentumGranted - totalMomentumSpent).coerceAtLeast(0L)
+}
 
 internal data class FitnessRewardResult(
     val state: FitnessRewardState,
     val walkingXpGranted: Long,
-    val adventurePointsGranted: Long
+    val adventurePointsGranted: Long,
+    val momentumGranted: Long = 0L
 )
