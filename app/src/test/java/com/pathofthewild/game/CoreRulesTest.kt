@@ -28,6 +28,62 @@ class CoreRulesTest {
     }
 
     @Test
+    fun stepDetectorAddsOneLiveStepPerFootfall() {
+        var state = StepLedgerState(confirmedHealthSteps = 100L, rewardedEligibleSteps = 100L)
+        repeat(10) { state = StepReconciler.observeDetectedSteps(state) }
+
+        assertEquals(10L, state.liveUnconfirmedSteps)
+        assertEquals(110L, state.displayedSteps)
+        assertEquals(110L, state.rewardedEligibleSteps)
+    }
+
+    @Test
+    fun counterAnchorDoesNotDoubleCountDetectorSteps() {
+        var state = StepLedgerState(
+            confirmedHealthSteps = 100L,
+            rewardedEligibleSteps = 100L,
+            lastSensorRaw = 1_000f
+        )
+        repeat(10) { state = StepReconciler.observeDetectedSteps(state) }
+        state = StepReconciler.observeCounterAnchor(state, 1_010f)
+
+        assertEquals(10L, state.liveUnconfirmedSteps)
+        assertEquals(110L, state.displayedSteps)
+        assertEquals(1_010f, state.lastSensorRaw ?: -1f, 0f)
+    }
+
+    @Test
+    fun counterAnchorStillDetectsRebootWithoutErasingDetectorProgress() {
+        var state = StepLedgerState(
+            confirmedHealthSteps = 800L,
+            rewardedEligibleSteps = 800L,
+            lastSensorRaw = 4_000f
+        )
+        repeat(7) { state = StepReconciler.observeDetectedSteps(state) }
+        val beforeReboot = state.displayedSteps
+
+        state = StepReconciler.observeCounterAnchor(state, 20f)
+
+        assertEquals(1, state.sensorEpoch)
+        assertEquals(beforeReboot, state.displayedSteps)
+        assertEquals(7L, state.liveUnconfirmedSteps)
+        assertEquals(20f, state.lastSensorRaw ?: -1f, 0f)
+    }
+
+    @Test
+    fun healthCatchupConsumesDetectorLiveSteps() {
+        var state = StepLedgerState(confirmedHealthSteps = 1_000L, rewardedEligibleSteps = 1_000L)
+        state = StepReconciler.observeDetectedSteps(state, 12L)
+        assertEquals(1_012L, state.displayedSteps)
+
+        state = StepReconciler.reconcileHealth(state, 1_012L)
+
+        assertEquals(0L, state.liveUnconfirmedSteps)
+        assertEquals(1_012L, state.confirmedHealthSteps)
+        assertEquals(1_012L, state.displayedSteps)
+    }
+
+    @Test
     fun liveSensorStepsAreNotAddedTwiceWhenHealthCatchesUp() {
         var state = StepLedgerState(confirmedHealthSteps = 5_000L, rewardedEligibleSteps = 5_000L)
         state = StepReconciler.observeSensor(state, 10_000f)
