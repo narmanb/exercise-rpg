@@ -275,6 +275,9 @@ private fun PathOfTheWildApp() {
     val fitnessStore = remember { FitnessLedgerStore(context) }
     var stepLedger by remember { mutableStateOf(fitnessStore.loadStepLedger(profile?.sensorBaseline)) }
     var rewardLedger by remember { mutableStateOf(fitnessStore.loadRewardLedger()) }
+    var healthLastSyncEpochMs by remember(profile?.createdAtEpochMs) {
+        mutableStateOf(fitnessStore.loadLastHealthSyncEpochMs())
+    }
     var destination by remember { mutableStateOf(Destination.Home) }
     val activitySignalStore = remember { ActivitySignalStore(context.applicationContext) }
     var activitySignal by remember(profile?.createdAtEpochMs) { mutableStateOf(activitySignalStore.load()) }
@@ -337,6 +340,11 @@ private fun PathOfTheWildApp() {
             }
             healthLoaded = true
             healthError = null
+            if (p != null) {
+                val syncEpochMs = System.currentTimeMillis()
+                healthLastSyncEpochMs = syncEpochMs
+                fitnessStore.saveLastHealthSyncEpochMs(syncEpochMs)
+            }
         } catch (t: Throwable) {
             healthError = t.message ?: t::class.java.simpleName
             healthLoaded = false
@@ -490,6 +498,7 @@ private fun PathOfTheWildApp() {
                     sensorBaseline = sensorBaseline
                 )
                 fitnessStore.resetForNewCharacter(sensorBaseline)
+                healthLastSyncEpochMs = null
                 stepLedger = fitnessStore.loadStepLedger(sensorBaseline)
                 rewardLedger = fitnessStore.loadRewardLedger()
                 scope.launch { refreshHealth() }
@@ -536,6 +545,7 @@ private fun PathOfTheWildApp() {
                         healthPermissionGranted = healthPermissionGranted,
                         healthTodaySteps = healthTodaySteps,
                         healthCharacterSteps = healthCharacterSteps,
+                        healthLastSyncEpochMs = healthLastSyncEpochMs,
                         healthError = healthError,
                         hasStepSensor = hasStepSensor,
                         activityPermissionGranted = activityPermissionGranted,
@@ -591,6 +601,7 @@ private fun PathOfTheWildApp() {
                     healthPermissionGranted = healthPermissionGranted,
                     healthTodaySteps = healthTodaySteps,
                     healthCharacterSteps = healthCharacterSteps,
+                        healthLastSyncEpochMs = healthLastSyncEpochMs,
                     healthError = healthError,
                     hasStepSensor = hasStepSensor,
                     activityPermissionGranted = activityPermissionGranted,
@@ -693,6 +704,7 @@ private fun DestinationContent(
     healthPermissionGranted: Boolean,
     healthTodaySteps: Long,
     healthCharacterSteps: Long,
+    healthLastSyncEpochMs: Long?,
     healthError: String?,
     hasStepSensor: Boolean,
     activityPermissionGranted: Boolean,
@@ -709,7 +721,30 @@ private fun DestinationContent(
     onRefreshHealth: () -> Unit
 ) {
     when (destination) {
-        Destination.Home -> HomeScreen(modifier, profile, eligibleSteps, walkingXp, levelProgress, adventureAvailable, momentumAvailable, store)
+        Destination.Home -> HomeScreen(
+            modifier = modifier,
+            profile = profile,
+            eligibleSteps = eligibleSteps,
+            walkingXp = walkingXp,
+            levelProgress = levelProgress,
+            adventureAvailable = adventureAvailable,
+            momentumAvailable = momentumAvailable,
+            store = store,
+            trackingContent = {
+                FitnessTrackingPanel(
+                    trackingMode = trackingMode,
+                    healthStatus = healthStatusLabel(healthSdkStatus, healthPermissionGranted),
+                    healthPermissionGranted = healthPermissionGranted,
+                    healthLastSyncEpochMs = healthLastSyncEpochMs,
+                    sensorStatus = sensorStatusLabel(hasStepSensor, activityPermissionGranted),
+                    activityPermissionGranted = activityPermissionGranted,
+                    activitySamplingStatus = activitySamplingStatus,
+                    activitySignal = activitySignal,
+                    onRequestHealth = onRequestHealth,
+                    onRequestActivity = onRequestActivity
+                )
+            }
+        )
         Destination.Adventure -> OverworldScreen(modifier, adventureAvailable, profile.createdAtEpochMs, profile.name, levelProgress.level, momentumAvailable, onSpendMomentum)
         Destination.Calories -> CaloriesScreen(modifier, store)
         Destination.Training -> WorkoutScreen(modifier)
@@ -719,6 +754,7 @@ private fun DestinationContent(
             healthPermissionGranted = healthPermissionGranted,
             healthTodaySteps = healthTodaySteps,
             healthCharacterSteps = healthCharacterSteps,
+            healthLastSyncEpochMs = healthLastSyncEpochMs,
             healthError = healthError,
             hasStepSensor = hasStepSensor,
             activityPermissionGranted = activityPermissionGranted,
@@ -757,7 +793,8 @@ private fun HomeScreen(
     levelProgress: LevelProgress,
     adventureAvailable: Long,
     momentumAvailable: Long,
-    store: GameStore
+    store: GameStore,
+    trackingContent: @Composable () -> Unit
 ) {
     val calories = store.foodEntriesToday().sumOf { it.calories }
     val target = store.calorieTarget()
@@ -783,6 +820,8 @@ private fun HomeScreen(
                 rightValue = adventureAvailable.toString()
             )
         }
+        item { trackingContent() }
+
         item {
             ResponsiveCard {
                 Text("Walking rewards", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -1106,6 +1145,7 @@ private fun DiagnosticsScreen(
     healthPermissionGranted: Boolean,
     healthTodaySteps: Long,
     healthCharacterSteps: Long,
+    healthLastSyncEpochMs: Long?,
     healthError: String?,
     hasStepSensor: Boolean,
     activityPermissionGranted: Boolean,
@@ -1139,6 +1179,7 @@ private fun DiagnosticsScreen(
                 DiagnosticLine("Current tracking mode", trackingMode.label)
                 DiagnosticLine("Health Connect — today", healthTodaySteps.toString())
                 DiagnosticLine("Health Connect — since character", healthCharacterSteps.toString())
+                DiagnosticLine("Health Connect last successful sync", healthLastSyncEpochMs?.let { Instant.ofEpochMilli(it).toString() } ?: "Not yet")
                 DiagnosticLine("Ledger confirmed Health steps", stepLedger.confirmedHealthSteps.toString())
                 DiagnosticLine("Live unsynced sensor steps", stepLedger.liveUnconfirmedSteps.toString())
                 DiagnosticLine("Rewarded eligible-step watermark", rewardLedger.lastRewardedEligibleSteps.toString())
