@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -17,38 +17,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Remove core store definitions from MainActivity
-        if: github.event_name == 'push' && github.ref == 'refs/heads/core-save-modularization-v1'
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          path = Path('app/src/main/java/com/pathofthewild/game/MainActivity.kt')
-          lines = path.read_text().splitlines()
-
-          lines = [
-              line for line in lines
-              if line not in {'import org.json.JSONArray', 'import org.json.JSONObject'}
-          ]
-
-          if any(line.startswith('private data class CharacterProfile(') for line in lines):
-              start = next(i for i, line in enumerate(lines) if line.startswith('private data class CharacterProfile('))
-              end = next(
-                  i for i in range(start, len(lines) - 1)
-                  if lines[i].strip() == '@Composable' and lines[i + 1].strip().startswith('private fun PathOfTheWildTheme(')
-              )
-              del lines[start:end]
-
-          path.write_text('\n'.join(lines) + '\n')
-          PY
-          if ! git diff --quiet -- app/src/main/java/com/pathofthewild/game/MainActivity.kt; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add app/src/main/java/com/pathofthewild/game/MainActivity.kt
-            git commit -m "Use extracted core game store"
-            git push origin HEAD:core-save-modularization-v1
-          fi
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
