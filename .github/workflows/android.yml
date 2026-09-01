@@ -23,45 +23,30 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-
           path = Path('app/src/main/java/com/pathofthewild/game/OverworldScreen.kt')
-          text = path.read_text()
-          old = '''        item {
-            MonsterRosterPanel(
-                characterCreatedAtEpochMs = characterCreatedAtEpochMs,
-                protagonistLevel = protagonistLevel,
-                refreshKey = rosterRevision,
-                onFormationChanged = { rosterRevision++ }
-            )
-        }
-
-        item {
-            InventoryPanel('''
-          new = '''        item {
-            MonsterRosterPanel(
-                characterCreatedAtEpochMs = characterCreatedAtEpochMs,
-                protagonistLevel = protagonistLevel,
-                refreshKey = rosterRevision,
-                onFormationChanged = { rosterRevision++ }
-            )
-        }
-
-        item {
-            PartyStatusPanel(
-                protagonistName = protagonistName,
-                protagonistLevel = protagonistLevel,
-                activeMonsters = activeParty,
-                savedVitals = partyVitals
-            )
-        }
-
-        item {
-            InventoryPanel('''
-          if new not in text:
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f'Expected one roster/inventory insertion point, found {count}')
-              path.write_text(text.replace(old, new))
+          lines = path.read_text().splitlines()
+          if not any('PartyStatusPanel(' in line for line in lines):
+              inventory_call = next((i for i, line in enumerate(lines) if 'InventoryPanel(' in line), None)
+              if inventory_call is None:
+                  raise SystemExit('InventoryPanel insertion anchor not found')
+              item_start = inventory_call - 1
+              while item_start >= 0 and lines[item_start].strip() != 'item {':
+                  item_start -= 1
+              if item_start < 0:
+                  raise SystemExit('Inventory item block start not found')
+              insert = [
+                  '        item {',
+                  '            PartyStatusPanel(',
+                  '                protagonistName = protagonistName,',
+                  '                protagonistLevel = protagonistLevel,',
+                  '                activeMonsters = activeParty,',
+                  '                savedVitals = partyVitals',
+                  '            )',
+                  '        }',
+                  '',
+              ]
+              lines[item_start:item_start] = insert
+              path.write_text('\n'.join(lines) + '\n')
           PY
           if ! git diff --quiet -- app/src/main/java/com/pathofthewild/game/OverworldScreen.kt; then
             git config user.name "github-actions[bot]"
