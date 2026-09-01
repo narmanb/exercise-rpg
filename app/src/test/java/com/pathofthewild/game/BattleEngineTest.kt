@@ -107,6 +107,25 @@ class BattleEngineTest {
     }
 
     @Test
+    fun restoreMpActionRefillsTargetWithoutExceedingMaximum() {
+        val adventurer = hero().copy(speed = 30, mp = 25)
+        val foe = enemy()
+        var state = BattleEngine.start(listOf(adventurer, foe))
+        val draught = CombatTechnique(
+            id = ItemCatalog.focusDraught.id,
+            name = ItemCatalog.focusDraught.name,
+            kind = CombatActionKind.RestoreMp,
+            targetMode = CombatTargetMode.AllySingle,
+            power = ItemCatalog.focusDraught.power,
+            actionDelay = 85
+        )
+
+        state = BattleEngine.perform(state, draught, adventurer.id)
+
+        assertEquals(40, state.combatant(adventurer.id)!!.mp)
+    }
+
+    @Test
     fun centerGuardIsRespectedByEngineTargetValidation() {
         val center = monster("center", PlayerFormationSlot.Center, speed = 12)
         val foe = enemy().copy(speed = 40)
