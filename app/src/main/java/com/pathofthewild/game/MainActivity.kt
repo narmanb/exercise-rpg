@@ -418,6 +418,18 @@ private fun PathOfTheWildApp() {
     val levelProgress = RpgProgression.progress(walkingXp)
     val adventureEarned = rewardLedger.totalAdventurePointsGranted
     val adventureAvailable = max(0L, 4L + adventureEarned - overworldStore.adventureSpent())
+    val momentumAvailable = rewardLedger.momentumAvailable
+
+    fun spendMomentum(amount: Long): Boolean {
+        return when (val result = MomentumRules.spend(rewardLedger, amount)) {
+            is MomentumSpendResult.Rejected -> false
+            is MomentumSpendResult.Success -> {
+                rewardLedger = result.state
+                fitnessStore.saveRewardLedger(result.state)
+                true
+            }
+        }
+    }
 
     if (profile == null) {
         CharacterCreationScreen(
@@ -481,6 +493,8 @@ private fun PathOfTheWildApp() {
                         walkingXp = walkingXp,
                         levelProgress = levelProgress,
                         adventureAvailable = adventureAvailable,
+                        momentumAvailable = momentumAvailable,
+                        onSpendMomentum = ::spendMomentum,
                         healthSdkStatus = healthSdkStatus,
                         healthPermissionGranted = healthPermissionGranted,
                         healthTodaySteps = healthTodaySteps,
@@ -531,6 +545,8 @@ private fun PathOfTheWildApp() {
                     walkingXp = walkingXp,
                     levelProgress = levelProgress,
                     adventureAvailable = adventureAvailable,
+                        momentumAvailable = momentumAvailable,
+                        onSpendMomentum = ::spendMomentum,
                     healthSdkStatus = healthSdkStatus,
                     healthPermissionGranted = healthPermissionGranted,
                     healthTodaySteps = healthTodaySteps,
@@ -625,6 +641,8 @@ private fun DestinationContent(
     walkingXp: Long,
     levelProgress: LevelProgress,
     adventureAvailable: Long,
+    momentumAvailable: Long,
+    onSpendMomentum: (Long) -> Boolean,
     healthSdkStatus: Int,
     healthPermissionGranted: Boolean,
     healthTodaySteps: Long,
@@ -642,8 +660,8 @@ private fun DestinationContent(
     onRefreshHealth: () -> Unit
 ) {
     when (destination) {
-        Destination.Home -> HomeScreen(modifier, profile, eligibleSteps, walkingXp, levelProgress, adventureAvailable, store)
-        Destination.Adventure -> OverworldScreen(modifier, adventureAvailable, profile.createdAtEpochMs, profile.name, levelProgress.level)
+        Destination.Home -> HomeScreen(modifier, profile, eligibleSteps, walkingXp, levelProgress, adventureAvailable, momentumAvailable, store)
+        Destination.Adventure -> OverworldScreen(modifier, adventureAvailable, profile.createdAtEpochMs, profile.name, levelProgress.level, momentumAvailable, onSpendMomentum)
         Destination.Calories -> CaloriesScreen(modifier, store)
         Destination.Training -> WorkoutScreen(modifier)
         Destination.Diagnostics -> DiagnosticsScreen(
@@ -686,6 +704,7 @@ private fun HomeScreen(
     walkingXp: Long,
     levelProgress: LevelProgress,
     adventureAvailable: Long,
+    momentumAvailable: Long,
     store: GameStore
 ) {
     val calories = store.foodEntriesToday().sumOf { it.calories }
@@ -716,7 +735,8 @@ private fun HomeScreen(
             ResponsiveCard {
                 Text("Walking rewards", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(6.dp))
-                Text("Prototype balance: 1 Adventure Point per 500 eligible steps and 1 XP per 100 eligible steps. Values will be tuned later.")
+                Text("Prototype balance: 1 Adventure Point and 1 Momentum per 500 eligible steps, plus 1 XP per 100 eligible steps. Values will be tuned later.")
+                Text("Momentum available: $momentumAvailable", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
             }
         }
         item {

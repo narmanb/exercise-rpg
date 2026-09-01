@@ -57,7 +57,9 @@ internal fun OverworldScreen(
     adventureAvailable: Long,
     characterCreatedAtEpochMs: Long,
     protagonistName: String,
-    protagonistLevel: Int
+    protagonistLevel: Int,
+    momentumAvailable: Long = 0L,
+    onSpendMomentum: (Long) -> Boolean = { false }
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val store = remember { OverworldProgressStore(context) }
@@ -148,6 +150,26 @@ internal fun OverworldScreen(
                         inventoryRevision++
                         "${item.name} used on ${target.name}."
                     }
+                }
+            }
+        }
+    }
+
+    fun rallyWithMomentum(): String {
+        val currentParty = PlayerPartyFactory.currentCondition(
+            protagonistName = protagonistName,
+            protagonistLevel = protagonistLevel,
+            activeMonsters = activeParty,
+            savedVitals = partyVitals
+        )
+        return when (val plan = MomentumRules.rally(momentumAvailable, currentParty)) {
+            is MomentumRallyResult.Rejected -> plan.reason
+            is MomentumRallyResult.Success -> {
+                if (!onSpendMomentum(plan.cost)) {
+                    "Momentum balance changed before Rally could be used."
+                } else {
+                    partyVitals = partyVitalsStore.saveBattleResult(plan.party)
+                    "Rally restored ${MomentumRules.RALLY_RECOVERY_PERCENT}% HP and MP to conscious party members."
                 }
             }
         }
@@ -330,6 +352,19 @@ internal fun OverworldScreen(
                 protagonistLevel = protagonistLevel,
                 activeMonsters = activeParty,
                 savedVitals = partyVitals
+            )
+        }
+
+        item {
+            MomentumPanel(
+                momentumAvailable = momentumAvailable,
+                party = PlayerPartyFactory.currentCondition(
+                    protagonistName = protagonistName,
+                    protagonistLevel = protagonistLevel,
+                    activeMonsters = activeParty,
+                    savedVitals = partyVitals
+                ),
+                onRally = ::rallyWithMomentum
             )
         }
 
