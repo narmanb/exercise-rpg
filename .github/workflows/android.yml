@@ -2,13 +2,13 @@ name: Android CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, protagonist-class-foundation-v1 ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -17,6 +17,49 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Connect protagonist class foundation
+        if: github.event_name == 'push' && github.ref == 'refs/heads/protagonist-class-foundation-v1'
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/main/java/com/pathofthewild/game/MainActivity.kt')
+          lines = path.read_text().splitlines()
+
+          if not any('val protagonistClass = rememberProtagonistClass(' in line for line in lines):
+              home = next(i for i, line in enumerate(lines) if line.strip() == 'private fun HomeScreen(')
+              target = next(i for i in range(home, len(lines)) if line := lines[i] if line.strip() == 'val target = store.calorieTarget()' else None)
+              lines.insert(target + 1, '    val protagonistClass = rememberProtagonistClass(profile.createdAtEpochMs)')
+
+          old = '                        Text("Adventurer · Lv ${levelProgress.level}", color = MaterialTheme.colorScheme.onSurfaceVariant)'
+          new = '                        Text("${protagonistClass.name} · Lv ${levelProgress.level}", color = MaterialTheme.colorScheme.onSurfaceVariant)'
+          if old in lines:
+              lines[lines.index(old)] = new
+
+          if not any('ProtagonistClassPanel(protagonistClass)' in line for line in lines):
+              home = next(i for i, line in enumerate(lines) if line.strip() == 'private fun HomeScreen(')
+              metric = next(i for i in range(home, len(lines)) if lines[i].strip() == 'MetricPair(')
+              item_start = metric
+              while item_start >= home and lines[item_start].strip() != 'item {':
+                  item_start -= 1
+              if item_start < home:
+                  raise SystemExit('Home metric item anchor not found')
+              lines[item_start:item_start] = [
+                  '        item {',
+                  '            ProtagonistClassPanel(protagonistClass)',
+                  '        }',
+              ]
+
+          path.write_text('\n'.join(lines) + '\n')
+          PY
+          if ! git diff --quiet -- app/src/main/java/com/pathofthewild/game/MainActivity.kt; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add app/src/main/java/com/pathofthewild/game/MainActivity.kt
+            git commit -m "Expose protagonist class foundation on Home"
+            git push origin HEAD:protagonist-class-foundation-v1
+          fi
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
