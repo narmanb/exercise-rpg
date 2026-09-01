@@ -204,7 +204,7 @@ internal fun WorkoutScreen(modifier: Modifier = Modifier) {
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text("Reps by set (optional, e.g. 8/8/6)") },
                         singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text)
                     )
                 }
 
