@@ -857,6 +857,7 @@ private fun HomeScreen(
 ) {
     val calories = store.foodEntriesToday().sumOf { it.calories }
     val target = store.calorieTarget()
+    val protagonistClass = rememberProtagonistClass(profile.createdAtEpochMs)
     ScreenColumn(modifier) {
         item {
             ResponsiveCard {
@@ -864,12 +865,15 @@ private fun HomeScreen(
                     HumanoidGlyph(Modifier.size(74.dp))
                     Column(Modifier.weight(1f)) {
                         Text(profile.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                        Text("Adventurer · Lv ${levelProgress.level}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("${protagonistClass.name} · Lv ${levelProgress.level}", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text("Walking XP $walkingXp", fontWeight = FontWeight.SemiBold)
                         Text("Level XP ${levelProgress.xpIntoLevel} / ${levelProgress.xpToNextLevel}", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
+        }
+        item {
+            ProtagonistClassPanel(protagonistClass)
         }
         item {
             MetricPair(
