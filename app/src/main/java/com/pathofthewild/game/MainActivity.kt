@@ -167,6 +167,7 @@ private fun PathOfTheWildApp() {
     val context = androidx.compose.ui.platform.LocalContext.current
     val store = remember { GameStore(context) }
     val overworldStore = remember { OverworldProgressStore(context) }
+    val protagonistProgressStore = remember { ProtagonistProgressStore(context.applicationContext) }
     val scope = rememberCoroutineScope()
 
     var profile by remember { mutableStateOf(store.loadProfile()) }
@@ -409,7 +410,9 @@ private fun PathOfTheWildApp() {
     } ?: 0L
     val eligibleSteps = stepLedger.displayedSteps
     val walkingXp = rewardLedger.totalWalkingXpGranted
-    val levelProgress = RpgProgression.progress(walkingXp)
+    val gameplayXp = profile?.let { protagonistProgressStore.ensureCharacter(it.createdAtEpochMs).gameplayXp } ?: 0L
+    val totalXp = ProtagonistProgressRules.totalXp(walkingXp, gameplayXp)
+    val levelProgress = RpgProgression.progress(totalXp)
     val adventureEarned = rewardLedger.totalAdventurePointsGranted
     val adventureAvailable = max(0L, 4L + adventureEarned - overworldStore.adventureSpent())
     val momentumAvailable = rewardLedger.momentumAvailable
@@ -761,7 +764,7 @@ private fun HomeScreen(
                     Column(Modifier.weight(1f)) {
                         Text(profile.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                         Text("${protagonistClass.name} · Lv ${levelProgress.level}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("Walking XP $walkingXp", fontWeight = FontWeight.SemiBold)
+                        Text("Total XP ${levelProgress.totalXp} · Walking $walkingXp", fontWeight = FontWeight.SemiBold)
                         Text("Level XP ${levelProgress.xpIntoLevel} / ${levelProgress.xpToNextLevel}", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
