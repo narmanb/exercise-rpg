@@ -53,6 +53,7 @@ The app is built in Kotlin with Jetpack Compose and is designed to adapt across 
 - Strength entries can additionally record an optional working load in pounds or kilograms and per-set reps such as `8/8/6`.
 - Workout history includes 7-day, 30-day, 90-day, and all-time summaries with workout counts, total minutes, active days, and category breakdowns.
 - Named strength exercises derive personal records for heaviest load, best single-set reps, and highest total session reps, with pound/kilogram comparison handled across units.
+- Individual workout-history entries can be deleted after an explicit confirmation, with all derived workout summaries and records recalculated from the remaining history.
 - Manual calorie logging, configurable daily target, and calorie-history chart/range views.
 - Manual save export/import with validation and rollback protection.
 - Character-scoped save state across overworld progress, local events, monsters, inventory, party vitals, protagonist class, fitness rewards, protagonist gameplay XP, and workout history.
