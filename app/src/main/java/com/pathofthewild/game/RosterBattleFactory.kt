@@ -181,12 +181,20 @@ internal object RosterBattleFactory {
             bypassesCenterGuard = true
         )
         val potion = CombatTechnique(
-            id = "potion",
+            id = ItemCatalog.fieldTonic.id,
             name = ItemCatalog.fieldTonic.name,
             kind = CombatActionKind.Heal,
             targetMode = CombatTargetMode.AllySingle,
             power = ItemCatalog.fieldTonic.power,
             actionDelay = 90
+        )
+        val focusDraught = CombatTechnique(
+            id = ItemCatalog.focusDraught.id,
+            name = ItemCatalog.focusDraught.name,
+            kind = CombatActionKind.RestoreMp,
+            targetMode = CombatTargetMode.AllySingle,
+            power = ItemCatalog.focusDraught.power,
+            actionDelay = 85
         )
         val defend = CombatTechnique(
             id = "hero_defend",
@@ -213,6 +221,7 @@ internal object RosterBattleFactory {
             heroAttack = heroAttack,
             heroSkills = listOf(quickSlash, arcBolt),
             heroItem = potion,
+            heroFocusDraught = focusDraught,
             heroDefend = defend,
             heroCapture = capture,
             monsterLoadouts = playerLoadouts,

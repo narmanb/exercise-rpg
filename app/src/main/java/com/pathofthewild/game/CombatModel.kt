@@ -17,6 +17,7 @@ internal enum class CombatActionKind {
     Physical,
     Magic,
     Heal,
+    RestoreMp,
     Defend,
     Focus,
     Capture,

@@ -107,8 +107,8 @@ internal fun OverworldScreen(
         resolvedPoiIds = store.resolvedPointOfInterestIds()
     }
 
-    fun consumeFieldTonic(): Boolean {
-        return when (inventoryStore.consume(ItemCatalog.fieldTonic.id)) {
+    fun consumeBattleItem(itemId: String): Boolean {
+        return when (inventoryStore.consume(itemId)) {
             is InventoryTransaction.Rejected -> false
             is InventoryTransaction.Success -> {
                 inventoryRevision++
@@ -164,8 +164,8 @@ internal fun OverworldScreen(
             protagonistName = protagonistName,
             protagonistLevel = protagonistLevel,
             activeMonsters = activeParty,
-            fieldTonicCount = inventory.quantity(ItemCatalog.fieldTonic.id),
-            onConsumeFieldTonic = ::consumeFieldTonic,
+            battleItemQuantities = inventory.quantities,
+            onConsumeBattleItem = ::consumeBattleItem,
             onVictory = { capturedEnemyIds, bondEligibleMonsterInstanceIds ->
                 capturedEnemyIds.forEach { speciesId -> rosterStore.capture(speciesId) }
                 bondEligibleMonsterInstanceIds.forEach { instanceId -> rosterStore.addBond(instanceId, 10) }
@@ -229,8 +229,8 @@ internal fun OverworldScreen(
             protagonistName = protagonistName,
             protagonistLevel = protagonistLevel,
             activeMonsters = activeParty,
-            fieldTonicCount = inventory.quantity(ItemCatalog.fieldTonic.id),
-            onConsumeFieldTonic = ::consumeFieldTonic,
+            battleItemQuantities = inventory.quantities,
+            onConsumeBattleItem = ::consumeBattleItem,
             onVictory = { capturedEnemyIds, bondEligibleMonsterInstanceIds ->
                 capturedEnemyIds.forEach { speciesId -> rosterStore.capture(speciesId) }
                 bondEligibleMonsterInstanceIds.forEach { instanceId -> rosterStore.addBond(instanceId, 10) }

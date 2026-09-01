@@ -88,6 +88,14 @@ internal object BattleEngine {
                     logLine = "${actor.name} restores ${technique.power} HP to ${target.name}."
                 }
             }
+            CombatActionKind.RestoreMp -> {
+                if (target != null) {
+                    val currentTarget = combatants.first { it.id == target.id }
+                    val restored = currentTarget.copy(mp = (currentTarget.mp + technique.power).coerceAtMost(currentTarget.maxMp))
+                    combatants = replaceCombatant(combatants, restored)
+                    logLine = "${actor.name} restores ${technique.power} MP to ${target.name}."
+                }
+            }
             CombatActionKind.Capture -> {
                 if (target != null) {
                     val currentTarget = combatants.first { it.id == target.id }

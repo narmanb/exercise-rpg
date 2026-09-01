@@ -51,8 +51,8 @@ internal fun PrototypeBattleScreen(
     protagonistName: String = "Adventurer",
     protagonistLevel: Int = 1,
     activeMonsters: List<OwnedMonster> = emptyList(),
-    fieldTonicCount: Int = 0,
-    onConsumeFieldTonic: () -> Boolean = { false },
+    battleItemQuantities: Map<String, Int> = emptyMap(),
+    onConsumeBattleItem: (String) -> Boolean = { false },
     onVictory: (capturedEnemyIds: Set<String>, bondEligibleMonsterInstanceIds: Set<String>) -> Unit,
     onRetreat: () -> Unit
 ) {
@@ -62,6 +62,8 @@ internal fun PrototypeBattleScreen(
     var state by remember(encounterName) { mutableStateOf(content.initialState) }
     var pendingTechnique by remember { mutableStateOf<CombatTechnique?>(null) }
     var showingHeroSkills by remember { mutableStateOf(false) }
+    var showingHeroItems by remember { mutableStateOf(false) }
+    val battleItemIds = setOf(content.heroItem.id, content.heroFocusDraught.id)
 
     val active = state.activeCombatant()
     val pendingTargets = pendingTechnique?.let { technique ->
@@ -72,6 +74,7 @@ internal fun PrototypeBattleScreen(
     LaunchedEffect(active?.id, state.currentTime, state.result) {
         pendingTechnique = null
         showingHeroSkills = false
+        showingHeroItems = false
         val enemy = active?.takeIf { it.side == CombatSide.Enemy && state.result == null } ?: return@LaunchedEffect
         delay(450)
         val technique = content.enemyTechniques[enemy.id] ?: return@LaunchedEffect
@@ -88,7 +91,7 @@ internal fun PrototypeBattleScreen(
     fun chooseTechnique(technique: CombatTechnique) {
         val actor = state.activeCombatant() ?: return
         if (!CombatRules.canPayMp(actor, technique)) return
-        if (technique.id == content.heroItem.id && fieldTonicCount <= 0) return
+        if (technique.id in battleItemIds && (battleItemQuantities[technique.id] ?: 0) <= 0) return
         when (technique.targetMode) {
             CombatTargetMode.EnemySingle,
             CombatTargetMode.AllySingle -> pendingTechnique = technique
@@ -98,6 +101,7 @@ internal fun PrototypeBattleScreen(
                 state = BattleEngine.perform(state, technique)
                 pendingTechnique = null
                 showingHeroSkills = false
+                showingHeroItems = false
             }
         }
     }
@@ -105,13 +109,14 @@ internal fun PrototypeBattleScreen(
     fun targetCombatant(targetId: String) {
         val technique = pendingTechnique ?: return
         if (targetId !in pendingTargetIds) return
-        if (technique.id == content.heroItem.id && !onConsumeFieldTonic()) {
+        if (technique.id in battleItemIds && !onConsumeBattleItem(technique.id)) {
             pendingTechnique = null
             return
         }
         state = BattleEngine.perform(state, technique, targetId)
         pendingTechnique = null
         showingHeroSkills = false
+        showingHeroItems = false
     }
 
     LazyColumn(
@@ -174,10 +179,13 @@ internal fun PrototypeBattleScreen(
                 CommandPanel(
                     active = active,
                     content = content,
-                    fieldTonicCount = fieldTonicCount,
+                    battleItemQuantities = battleItemQuantities,
                     showingHeroSkills = showingHeroSkills,
+                    showingHeroItems = showingHeroItems,
                     onShowHeroSkills = { showingHeroSkills = true },
                     onBackFromHeroSkills = { showingHeroSkills = false },
+                    onShowHeroItems = { showingHeroItems = true },
+                    onBackFromHeroItems = { showingHeroItems = false },
                     onChooseTechnique = ::chooseTechnique,
                     pendingTechnique = pendingTechnique,
                     onCancelTargeting = { pendingTechnique = null }
@@ -377,10 +385,13 @@ private fun BattleFigure(unit: CombatantState, modifier: Modifier = Modifier) {
 private fun CommandPanel(
     active: CombatantState?,
     content: PrototypeBattleContent,
-    fieldTonicCount: Int,
+    battleItemQuantities: Map<String, Int>,
     showingHeroSkills: Boolean,
+    showingHeroItems: Boolean,
     onShowHeroSkills: () -> Unit,
     onBackFromHeroSkills: () -> Unit,
+    onShowHeroItems: () -> Unit,
+    onBackFromHeroItems: () -> Unit,
     onChooseTechnique: (CombatTechnique) -> Unit,
     pendingTechnique: CombatTechnique?,
     onCancelTargeting: () -> Unit
@@ -415,11 +426,26 @@ private fun CommandPanel(
                 )
                 Spacer(Modifier.height(6.dp))
                 OutlinedButton(onClick = onBackFromHeroSkills, Modifier.fillMaxWidth()) { Text("Back") }
+            } else if (showingHeroItems) {
+                val tonicCount = battleItemQuantities[content.heroItem.id] ?: 0
+                val draughtCount = battleItemQuantities[content.heroFocusDraught.id] ?: 0
+                CommandChoiceGrid(
+                    listOf(
+                        CommandChoice("${content.heroItem.name} ×$tonicCount", enabled = tonicCount > 0) {
+                            onChooseTechnique(content.heroItem)
+                        },
+                        CommandChoice("${content.heroFocusDraught.name} ×$draughtCount", enabled = draughtCount > 0) {
+                            onChooseTechnique(content.heroFocusDraught)
+                        }
+                    )
+                )
+                Spacer(Modifier.height(6.dp))
+                OutlinedButton(onClick = onBackFromHeroItems, Modifier.fillMaxWidth()) { Text("Back") }
             } else {
                 val commandActions = listOf(
                     CommandChoice("Attack") { onChooseTechnique(content.heroAttack) },
                     CommandChoice("Skills", action = onShowHeroSkills),
-                    CommandChoice("Item · Tonic ×$fieldTonicCount", enabled = fieldTonicCount > 0) { onChooseTechnique(content.heroItem) },
+                    CommandChoice("Item", action = onShowHeroItems),
                     CommandChoice("Defend") { onChooseTechnique(content.heroDefend) },
                     CommandChoice("Capture") { onChooseTechnique(content.heroCapture) }
                 )
