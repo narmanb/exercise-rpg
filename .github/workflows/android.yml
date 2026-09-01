@@ -2,13 +2,13 @@ name: Android CI
 
 on:
   push:
-    branches: [ main, party-status-v1 ]
+    branches: [ main, field-items-v1 ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -17,6 +17,86 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Connect field item use
+        if: github.event_name == 'push' && github.ref == 'refs/heads/field-items-v1'
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/main/java/com/pathofthewild/game/OverworldScreen.kt')
+          lines = path.read_text().splitlines()
+
+          if not any('fun useFieldItem(' in line for line in lines):
+              move_index = next((i for i, line in enumerate(lines) if 'fun moveTo(point: GridPoint)' in line), None)
+              if move_index is None:
+                  raise SystemExit('moveTo insertion anchor not found')
+              function_lines = [
+                  '    fun useFieldItem(itemId: String, targetId: String): String {',
+                  '        val item = ItemCatalog.get(itemId) ?: return "Unknown item."',
+                  '        val currentParty = PlayerPartyFactory.currentCondition(',
+                  '            protagonistName = protagonistName,',
+                  '            protagonistLevel = protagonistLevel,',
+                  '            activeMonsters = activeParty,',
+                  '            savedVitals = partyVitals',
+                  '        )',
+                  '        val target = currentParty.firstOrNull { it.id == targetId }',
+                  '            ?: return "That party member is unavailable."',
+                  '',
+                  '        return when (val result = FieldItemRules.apply(item, target)) {',
+                  '            is FieldItemUseResult.Rejected -> result.reason',
+                  '            is FieldItemUseResult.Applied -> {',
+                  '                when (val consumed = inventoryStore.consume(item.id)) {',
+                  '                    is InventoryTransaction.Rejected -> consumed.reason',
+                  '                    is InventoryTransaction.Success -> {',
+                  '                        val updatedParty = currentParty.map { member ->',
+                  '                            if (member.id == target.id) result.target else member',
+                  '                        }',
+                  '                        partyVitals = partyVitalsStore.saveBattleResult(updatedParty)',
+                  '                        inventoryRevision++',
+                  '                        "${item.name} used on ${target.name}."',
+                  '                    }',
+                  '                }',
+                  '            }',
+                  '        }',
+                  '    }',
+                  '',
+              ]
+              lines[move_index:move_index] = function_lines
+
+          if not any('FieldItemPanel(' in line for line in lines):
+              inventory_call = next((i for i, line in enumerate(lines) if 'InventoryPanel(' in line), None)
+              if inventory_call is None:
+                  raise SystemExit('InventoryPanel insertion anchor not found')
+              item_end = next((i for i in range(inventory_call, len(lines)) if lines[i] == '        }'), None)
+              if item_end is None:
+                  raise SystemExit('Inventory item block end not found')
+              panel_lines = [
+                  '',
+                  '        item {',
+                  '            FieldItemPanel(',
+                  '                inventory = inventory,',
+                  '                party = PlayerPartyFactory.currentCondition(',
+                  '                    protagonistName = protagonistName,',
+                  '                    protagonistLevel = protagonistLevel,',
+                  '                    activeMonsters = activeParty,',
+                  '                    savedVitals = partyVitals',
+                  '                ),',
+                  '                onUseItem = ::useFieldItem',
+                  '            )',
+                  '        }',
+              ]
+              lines[item_end + 1:item_end + 1] = panel_lines
+
+          path.write_text('\n'.join(lines) + '\n')
+          PY
+          if ! git diff --quiet -- app/src/main/java/com/pathofthewild/game/OverworldScreen.kt; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add app/src/main/java/com/pathofthewild/game/OverworldScreen.kt
+            git commit -m "Use restorative items between battles"
+            git push origin HEAD:field-items-v1
+          fi
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
