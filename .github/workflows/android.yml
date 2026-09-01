@@ -29,7 +29,7 @@ jobs:
 
           if not any('val protagonistClass = rememberProtagonistClass(' in line for line in lines):
               home = next(i for i, line in enumerate(lines) if line.strip() == 'private fun HomeScreen(')
-              target = next(i for i in range(home, len(lines)) if line := lines[i] if line.strip() == 'val target = store.calorieTarget()' else None)
+              target = next(i for i in range(home, len(lines)) if lines[i].strip() == 'val target = store.calorieTarget()')
               lines.insert(target + 1, '    val protagonistClass = rememberProtagonistClass(profile.createdAtEpochMs)')
 
           old = '                        Text("Adventurer · Lv ${levelProgress.level}", color = MaterialTheme.colorScheme.onSurfaceVariant)'
