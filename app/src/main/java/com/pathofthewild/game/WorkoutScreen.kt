@@ -52,6 +52,7 @@ internal fun WorkoutScreen(modifier: Modifier = Modifier) {
     var setRepsText by remember { mutableStateOf("") }
     var historyRange by remember { mutableStateOf(WorkoutHistoryRange.SevenDays) }
     var pendingDelete by remember { mutableStateOf<WorkoutEntry?>(null) }
+    var editingEntry by remember { mutableStateOf<WorkoutEntry?>(null) }
     val recentTemplates = remember(history) { WorkoutQuickReuseRules.recentTemplates(history) }
     val strengthRecords = remember(history) {
         StrengthRecordRules.records(history, nowEpochMs = System.currentTimeMillis())
@@ -59,6 +60,30 @@ internal fun WorkoutScreen(modifier: Modifier = Modifier) {
     val today = LocalDate.now()
     val historySummary = remember(history, historyRange, today) {
         WorkoutHistoryRules.summarize(history, historyRange, today, ZoneId.systemDefault())
+    }
+
+    fun clearWorkoutForm() {
+        editingEntry = null
+        category = WorkoutCategory.Strength
+        nameText = ""
+        minutesText = ""
+        effortText = ""
+        note = ""
+        loadText = ""
+        loadUnit = WorkoutLoadUnit.Pounds
+        setRepsText = ""
+    }
+
+    fun beginWorkoutEdit(entry: WorkoutEntry) {
+        editingEntry = entry
+        category = entry.category
+        nameText = entry.name
+        minutesText = entry.minutes.toString()
+        effortText = entry.effort?.toString().orEmpty()
+        note = entry.note
+        loadText = WorkoutStrengthRules.loadText(entry.strength.load)
+        loadUnit = entry.strength.loadUnit ?: WorkoutLoadUnit.Pounds
+        setRepsText = WorkoutStrengthRules.repsText(entry.strength.setReps)
     }
 
     pendingDelete?.let { entry ->
@@ -98,7 +123,7 @@ internal fun WorkoutScreen(modifier: Modifier = Modifier) {
                 )
             }
         }
-        if (recentTemplates.isNotEmpty()) {
+        if (recentTemplates.isNotEmpty() && editingEntry == null) {
             item {
                 WorkoutCard {
                     Text("Quick reuse", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -176,7 +201,10 @@ internal fun WorkoutScreen(modifier: Modifier = Modifier) {
         }
         item {
             WorkoutCard {
-                Text("New workout", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(if (editingEntry == null) "New workout" else "Edit workout", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                if (editingEntry != null) {
+                    Text("Saving changes keeps the original workout date and time.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 Spacer(Modifier.height(10.dp))
                 OutlinedTextField(
                     value = nameText,
@@ -292,26 +320,42 @@ internal fun WorkoutScreen(modifier: Modifier = Modifier) {
                     onClick = {
                         val minutes = minutesText.toIntOrNull()?.coerceIn(1, 1440) ?: return@Button
                         val effort = effortText.toIntOrNull()?.coerceIn(1, 10)
-                        store.add(
-                            category = category,
-                            minutes = minutes,
-                            effort = effort,
-                            note = note,
-                            name = nameText,
-                            load = loadText.toDoubleOrNull(),
-                            loadUnit = loadUnit,
-                            setReps = WorkoutStrengthRules.parseSetReps(setRepsText)
-                        )
+                        val edit = editingEntry
+                        if (edit == null) {
+                            store.add(
+                                category = category,
+                                minutes = minutes,
+                                effort = effort,
+                                note = note,
+                                name = nameText,
+                                load = loadText.toDoubleOrNull(),
+                                loadUnit = loadUnit,
+                                setReps = WorkoutStrengthRules.parseSetReps(setRepsText)
+                            )
+                        } else {
+                            store.update(
+                                id = edit.id,
+                                category = category,
+                                minutes = minutes,
+                                effort = effort,
+                                note = note,
+                                name = nameText,
+                                load = loadText.toDoubleOrNull(),
+                                loadUnit = loadUnit,
+                                setReps = WorkoutStrengthRules.parseSetReps(setRepsText)
+                            )
+                        }
                         history = store.history()
-                        nameText = ""
-                        minutesText = ""
-                        effortText = ""
-                        note = ""
-                        loadText = ""
-                        setRepsText = ""
+                        clearWorkoutForm()
                     },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("Save workout") }
+                ) { Text(if (editingEntry == null) "Save workout" else "Save changes") }
+                if (editingEntry != null) {
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedButton(onClick = { clearWorkoutForm() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Cancel edit")
+                    }
+                }
             }
         }
         item {
@@ -342,7 +386,11 @@ internal fun WorkoutScreen(modifier: Modifier = Modifier) {
                     val visibleEntries = historySummary.entries.take(50)
                     visibleEntries.forEachIndexed { index, entry ->
                         if (index > 0) HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                        WorkoutHistoryRow(entry, onDeleteRequested = { pendingDelete = entry })
+                        WorkoutHistoryRow(
+                            entry = entry,
+                            onEditRequested = { beginWorkoutEdit(entry) },
+                            onDeleteRequested = { pendingDelete = entry }
+                        )
                     }
                     if (historySummary.entries.size > visibleEntries.size) {
                         Spacer(Modifier.height(8.dp))
@@ -474,6 +522,7 @@ private fun WorkoutCategorySelector(
 @Composable
 private fun WorkoutHistoryRow(
     entry: WorkoutEntry,
+    onEditRequested: () -> Unit,
     onDeleteRequested: () -> Unit
 ) {
     val formatter = remember { DateTimeFormatter.ofPattern("MMM d, yyyy · h:mm a") }
@@ -496,6 +545,7 @@ private fun WorkoutHistoryRow(
         entry.effort?.let { Text("Effort $it/10", color = MaterialTheme.colorScheme.onSurfaceVariant) }
         if (entry.note.isNotBlank()) Text(entry.note)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = onEditRequested) { Text("Edit") }
             TextButton(onClick = onDeleteRequested) { Text("Delete") }
         }
     }
