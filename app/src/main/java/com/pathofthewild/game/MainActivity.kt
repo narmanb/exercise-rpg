@@ -200,6 +200,9 @@ private fun PathOfTheWildApp() {
     }
     var rawSensorSteps by remember { mutableFloatStateOf(-1f) }
     var hasStepSensor by remember { mutableStateOf(false) }
+    var hasStepDetector by remember { mutableStateOf(false) }
+    var detectorSessionSteps by remember(profile?.createdAtEpochMs) { mutableLongStateOf(0L) }
+    var lastDetectorStepEpochMs by remember(profile?.createdAtEpochMs) { mutableStateOf<Long?>(null) }
     val lifecycleOwner = remember(context) {
         var current: Context? = context
         while (current is ContextWrapper && current !is LifecycleOwner) {
@@ -354,22 +357,38 @@ private fun PathOfTheWildApp() {
 
     DisposableEffect(activityPermissionGranted, isForeground) {
         val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        val stepSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
-        hasStepSensor = stepSensor != null
+        val counterSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
+        val detectorSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR)
+        hasStepSensor = counterSensor != null
+        hasStepDetector = detectorSensor != null
         val listener = object : SensorEventListener {
             override fun onSensorChanged(event: SensorEvent) {
-                rawSensorSteps = event.values.firstOrNull() ?: -1f
+                when (event.sensor.type) {
+                    Sensor.TYPE_STEP_COUNTER -> {
+                        rawSensorSteps = event.values.firstOrNull() ?: -1f
+                    }
+                    Sensor.TYPE_STEP_DETECTOR -> {
+                        if ((event.values.firstOrNull() ?: 0f) <= 0f || profile == null) return
+                        detectorSessionSteps = if (detectorSessionSteps == Long.MAX_VALUE) Long.MAX_VALUE else detectorSessionSteps + 1L
+                        lastDetectorStepEpochMs = System.currentTimeMillis()
+                        val observed = StepReconciler.observeDetectedSteps(stepLedger)
+                        if (observed != stepLedger) {
+                            stepLedger = observed
+                            fitnessStore.saveStepLedger(observed)
+                        }
+                    }
+                }
             }
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
         }
-        if (
-            FitnessForegroundPolicy.shouldRegisterStepSensor(
-                isForeground = isForeground,
-                activityPermissionGranted = activityPermissionGranted,
-                hasStepSensor = stepSensor != null
-            ) && stepSensor != null
-        ) {
-            sensorManager.registerListener(listener, stepSensor, SensorManager.SENSOR_DELAY_NORMAL)
+        val shouldRegister = FitnessForegroundPolicy.shouldRegisterStepSensor(
+            isForeground = isForeground,
+            activityPermissionGranted = activityPermissionGranted,
+            hasStepSensor = counterSensor != null || detectorSensor != null
+        )
+        if (shouldRegister) {
+            counterSensor?.let { sensorManager.registerListener(listener, it, SensorManager.SENSOR_DELAY_NORMAL) }
+            detectorSensor?.let { sensorManager.registerListener(listener, it, SensorManager.SENSOR_DELAY_NORMAL) }
         }
         onDispose { sensorManager.unregisterListener(listener) }
     }
@@ -389,7 +408,11 @@ private fun PathOfTheWildApp() {
             store.setSensorBaseline(rawSensorSteps)
             profile = store.loadProfile()
         }
-        val observed = StepReconciler.observeSensor(stepLedger, rawSensorSteps)
+        val observed = if (hasStepDetector) {
+            StepReconciler.observeCounterAnchor(stepLedger, rawSensorSteps)
+        } else {
+            StepReconciler.observeSensor(stepLedger, rawSensorSteps)
+        }
         if (observed != stepLedger) {
             stepLedger = observed
             fitnessStore.saveStepLedger(observed)
@@ -418,7 +441,7 @@ private fun PathOfTheWildApp() {
     val momentumAvailable = rewardLedger.momentumAvailable
     val trackingMode = ActivitySignalRules.trackingMode(
         healthConnected = healthSdkStatus == HealthConnectClient.SDK_AVAILABLE && healthPermissionGranted,
-        hasStepSensor = hasStepSensor,
+        hasStepSensor = hasStepSensor || hasStepDetector,
         activityPermissionGranted = activityPermissionGranted
     )
 
@@ -436,7 +459,7 @@ private fun PathOfTheWildApp() {
     if (profile == null) {
         CharacterCreationScreen(
             healthStatus = healthStatusLabel(healthSdkStatus, healthPermissionGranted),
-            sensorStatus = sensorStatusLabel(hasStepSensor, activityPermissionGranted),
+            sensorStatus = sensorStatusLabel(hasStepSensor || hasStepDetector, activityPermissionGranted),
             onRequestHealth = {
                 if (healthSdkStatus == HealthConnectClient.SDK_AVAILABLE) {
                     healthPermissionLauncher.launch(setOf(readStepsPermission))
@@ -505,6 +528,9 @@ private fun PathOfTheWildApp() {
                         healthLastSyncEpochMs = healthLastSyncEpochMs,
                         healthError = healthError,
                         hasStepSensor = hasStepSensor,
+                        hasStepDetector = hasStepDetector,
+                        detectorSessionSteps = detectorSessionSteps,
+                        lastDetectorStepEpochMs = lastDetectorStepEpochMs,
                         activityPermissionGranted = activityPermissionGranted,
                         activitySignal = activitySignal,
                         activitySamplingStatus = activitySamplingStatus,
@@ -561,6 +587,9 @@ private fun PathOfTheWildApp() {
                         healthLastSyncEpochMs = healthLastSyncEpochMs,
                     healthError = healthError,
                     hasStepSensor = hasStepSensor,
+                    hasStepDetector = hasStepDetector,
+                    detectorSessionSteps = detectorSessionSteps,
+                    lastDetectorStepEpochMs = lastDetectorStepEpochMs,
                     activityPermissionGranted = activityPermissionGranted,
                         activitySignal = activitySignal,
                         activitySamplingStatus = activitySamplingStatus,
@@ -664,6 +693,9 @@ private fun DestinationContent(
     healthLastSyncEpochMs: Long?,
     healthError: String?,
     hasStepSensor: Boolean,
+    hasStepDetector: Boolean,
+    detectorSessionSteps: Long,
+    lastDetectorStepEpochMs: Long?,
     activityPermissionGranted: Boolean,
     activitySignal: ActivitySignal?,
     activitySamplingStatus: String,
@@ -693,7 +725,7 @@ private fun DestinationContent(
                     healthStatus = healthStatusLabel(healthSdkStatus, healthPermissionGranted),
                     healthPermissionGranted = healthPermissionGranted,
                     healthLastSyncEpochMs = healthLastSyncEpochMs,
-                    sensorStatus = sensorStatusLabel(hasStepSensor, activityPermissionGranted),
+                    sensorStatus = sensorStatusLabel(hasStepSensor || hasStepDetector, activityPermissionGranted),
                     activityPermissionGranted = activityPermissionGranted,
                     activitySamplingStatus = activitySamplingStatus,
                     activitySignal = activitySignal,
@@ -714,6 +746,9 @@ private fun DestinationContent(
             healthLastSyncEpochMs = healthLastSyncEpochMs,
             healthError = healthError,
             hasStepSensor = hasStepSensor,
+            hasStepDetector = hasStepDetector,
+            detectorSessionSteps = detectorSessionSteps,
+            lastDetectorStepEpochMs = lastDetectorStepEpochMs,
             activityPermissionGranted = activityPermissionGranted,
             activitySignal = activitySignal,
             activitySamplingStatus = activitySamplingStatus,
@@ -1109,6 +1144,9 @@ private fun DiagnosticsScreen(
     healthLastSyncEpochMs: Long?,
     healthError: String?,
     hasStepSensor: Boolean,
+    hasStepDetector: Boolean,
+    detectorSessionSteps: Long,
+    lastDetectorStepEpochMs: Long?,
     activityPermissionGranted: Boolean,
     activitySignal: ActivitySignal?,
     activitySamplingStatus: String,
@@ -1131,7 +1169,7 @@ private fun DiagnosticsScreen(
         item {
             ResponsiveCard {
                 Text("Fitness Diagnostics", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Text("This screen intentionally exposes the separate counters while step reconciliation is being developed.")
+                Text("This screen exposes immediate detector footfalls separately from delayed cumulative and Health Connect totals.")
             }
         }
         item {
@@ -1146,6 +1184,8 @@ private fun DiagnosticsScreen(
                 DiagnosticLine("Rewarded eligible-step watermark", rewardLedger.lastRewardedEligibleSteps.toString())
                 DiagnosticLine("Walking XP granted", rewardLedger.totalWalkingXpGranted.toString())
                 DiagnosticLine("Adventure Points granted", rewardLedger.totalAdventurePointsGranted.toString())
+                DiagnosticLine("Immediate detector steps this session", detectorSessionSteps.toString())
+                DiagnosticLine("Last immediate detector event", lastDetectorStepEpochMs?.let { Instant.ofEpochMilli(it).toString() } ?: "Not yet")
                 DiagnosticLine("Direct sensor raw since boot", if (rawSensorSteps >= 0) rawSensorSteps.toLong().toString() else "Waiting")
                 DiagnosticLine("Direct sensor delta from character baseline", sensorDelta.toString())
                 DiagnosticLine("Sensor reboot epoch", stepLedger.sensorEpoch.toString())
@@ -1156,7 +1196,8 @@ private fun DiagnosticsScreen(
                 Text("Data sources", fontWeight = FontWeight.Bold)
                 DiagnosticLine("Health Connect SDK", healthStatusLabel(healthSdkStatus, healthPermissionGranted))
                 DiagnosticLine("Health Connect on-device step collection", if (onDeviceHealthStepsAvailable) "Supported" else "Not supported by this OS/module")
-                DiagnosticLine("Hardware TYPE_STEP_COUNTER", if (hasStepSensor) "Available" else "Unavailable")
+                DiagnosticLine("Hardware TYPE_STEP_DETECTOR", if (hasStepDetector) "Available — immediate footfalls" else "Unavailable")
+                DiagnosticLine("Hardware TYPE_STEP_COUNTER", if (hasStepSensor) "Available — cumulative/backfill" else "Unavailable")
                 DiagnosticLine("Activity Recognition permission", if (activityPermissionGranted) "Granted" else "Not granted")
                 DiagnosticLine("Activity Recognition sampler", activitySamplingStatus)
                 healthError?.let { DiagnosticLine("Health Connect error", it) }
