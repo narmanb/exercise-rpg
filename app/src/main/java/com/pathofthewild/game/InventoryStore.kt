@@ -41,6 +41,8 @@ internal class InventoryStore(context: Context) {
 
     fun addItem(itemId: String, amount: Int): InventoryState = mutate { InventoryRules.addItem(it, itemId, amount) }
 
+    fun applyReward(reward: RpgReward): InventoryState = mutate { RewardRules.apply(it, reward) }
+
     fun consume(itemId: String, amount: Int = 1): InventoryTransaction {
         val current = load()
         return when (val result = InventoryRules.consume(current, itemId, amount)) {
