@@ -124,6 +124,35 @@ internal fun OverworldScreen(
         partyVitals = partyVitalsStore.saveBattleResult(combatants)
     }
 
+    fun useFieldItem(itemId: String, targetId: String): String {
+        val item = ItemCatalog.get(itemId) ?: return "Unknown item."
+        val currentParty = PlayerPartyFactory.currentCondition(
+            protagonistName = protagonistName,
+            protagonistLevel = protagonistLevel,
+            activeMonsters = activeParty,
+            savedVitals = partyVitals
+        )
+        val target = currentParty.firstOrNull { it.id == targetId }
+            ?: return "That party member is unavailable."
+
+        return when (val result = FieldItemRules.apply(item, target)) {
+            is FieldItemUseResult.Rejected -> result.reason
+            is FieldItemUseResult.Applied -> {
+                when (val consumed = inventoryStore.consume(item.id)) {
+                    is InventoryTransaction.Rejected -> consumed.reason
+                    is InventoryTransaction.Success -> {
+                        val updatedParty = currentParty.map { member ->
+                            if (member.id == target.id) result.target else member
+                        }
+                        partyVitals = partyVitalsStore.saveBattleResult(updatedParty)
+                        inventoryRevision++
+                        "${item.name} used on ${target.name}."
+                    }
+                }
+            }
+        }
+    }
+
     fun moveTo(point: GridPoint) {
         when (val result = store.moveTo(point, remainingAdventure)) {
             is OverworldMoveResult.Blocked -> message = result.reason
@@ -308,6 +337,19 @@ internal fun OverworldScreen(
             InventoryPanel(
                 characterCreatedAtEpochMs = characterCreatedAtEpochMs,
                 refreshKey = inventoryRevision
+            )
+        }
+
+        item {
+            FieldItemPanel(
+                inventory = inventory,
+                party = PlayerPartyFactory.currentCondition(
+                    protagonistName = protagonistName,
+                    protagonistLevel = protagonistLevel,
+                    activeMonsters = activeParty,
+                    savedVitals = partyVitals
+                ),
+                onUseItem = ::useFieldItem
             )
         }
 
