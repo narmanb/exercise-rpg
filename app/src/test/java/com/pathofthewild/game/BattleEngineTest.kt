@@ -55,6 +55,19 @@ class BattleEngineTest {
     }
 
     @Test
+    fun battleStartImmediatelyResolvesDefeatWhenEveryPlayerIsKo() {
+        val state = BattleEngine.start(
+            listOf(
+                hero().copy(hp = 0),
+                monster("center", PlayerFormationSlot.Center).copy(hp = 0),
+                enemy()
+            )
+        )
+
+        assertEquals(BattleResult.Defeat, state.result)
+    }
+
+    @Test
     fun captureWorksOnlyAtThirtyPercentHpOrLower() {
         val capture = CombatTechnique(
             id = "capture",
