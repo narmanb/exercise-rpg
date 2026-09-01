@@ -64,6 +64,14 @@ internal class FitnessLedgerStore(context: Context) {
             .apply()
     }
 
+    fun loadLastHealthSyncEpochMs(): Long? =
+        prefs.getLong(KEY_LAST_HEALTH_SYNC, 0L).takeIf { it > 0L }
+
+    fun saveLastHealthSyncEpochMs(epochMs: Long) {
+        if (epochMs <= 0L) return
+        prefs.edit().putLong(KEY_LAST_HEALTH_SYNC, epochMs).apply()
+    }
+
     /** Start a brand-new character at a zero-reward fitness epoch. */
     fun resetForNewCharacter(sensorBaseline: Float?) {
         saveStepLedger(
@@ -76,6 +84,7 @@ internal class FitnessLedgerStore(context: Context) {
             )
         )
         saveRewardLedger(FitnessRewardState())
+        prefs.edit().remove(KEY_LAST_HEALTH_SYNC).apply()
     }
 
     companion object {
@@ -89,5 +98,6 @@ internal class FitnessLedgerStore(context: Context) {
         private const val KEY_ADVENTURE_GRANTED = "fitness_adventure_points_granted"
         private const val KEY_MOMENTUM_GRANTED = "fitness_momentum_granted"
         private const val KEY_MOMENTUM_SPENT = "fitness_momentum_spent"
+        private const val KEY_LAST_HEALTH_SYNC = "fitness_last_health_sync_epoch_ms"
     }
 }
