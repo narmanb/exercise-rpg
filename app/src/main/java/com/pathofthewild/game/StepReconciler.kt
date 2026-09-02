@@ -1,27 +1,15 @@
 package com.pathofthewild.game
 
-/**
- * Pure core for combining immediate TYPE_STEP_DETECTOR events with durable TYPE_STEP_COUNTER and
- * Health Connect observations.
- *
- * Detector events are counted immediately for responsive foreground feedback. They also create
- * detectorCoverageSteps so later cumulative counter deltas can recognize those same footfalls
- * instead of adding them again. Counter deltas beyond detector coverage are treated as durable
- * backfill for steps missed while the detector was unavailable/backgrounded. Health confirmations
- * then consume matching unconfirmed steps. rewardedEligibleSteps remains monotonic so provider
- * corrections never revoke RPG rewards that were already granted.
- */
+/** Pure step-source reconciliation for detector, cumulative counter, and Health Connect. */
 internal object StepReconciler {
     fun observeDetector(state: StepLedgerState, acceptedSteps: Long = 1L): StepLedgerState {
         val accepted = acceptedSteps.coerceAtLeast(0L)
         if (accepted == 0L) return state
-
         val live = state.liveUnconfirmedSteps + accepted
-        val displayed = state.confirmedHealthSteps + live
         return state.copy(
             liveUnconfirmedSteps = live,
             detectorCoverageSteps = state.detectorCoverageSteps + accepted,
-            rewardedEligibleSteps = maxOf(state.rewardedEligibleSteps, displayed)
+            rewardedEligibleSteps = maxOf(state.rewardedEligibleSteps, state.confirmedHealthSteps + live)
         )
     }
 
@@ -30,13 +18,10 @@ internal object StepReconciler {
         val previousRaw = state.lastSensorRaw
         if (previousRaw == null) return state.copy(lastSensorRaw = rawSensorSteps)
 
-        // TYPE_STEP_COUNTER normally resets on reboot. Detector coverage from the previous boot
-        // cannot safely overlap the new cumulative epoch, but the already-earned live steps remain.
         if (rawSensorSteps < previousRaw) {
             return state.copy(
                 lastSensorRaw = rawSensorSteps,
-                sensorEpoch = state.sensorEpoch + 1,
-                detectorCoverageSteps = 0L
+                sensorEpoch = state.sensorEpoch + 1
             )
         }
 
@@ -46,13 +31,12 @@ internal object StepReconciler {
         val detectorOverlap = minOf(delta, state.detectorCoverageSteps)
         val backfill = (delta - detectorOverlap).coerceAtLeast(0L)
         val live = state.liveUnconfirmedSteps + backfill
-        val displayed = state.confirmedHealthSteps + live
         return state.copy(
             lastSensorRaw = rawSensorSteps,
             liveUnconfirmedSteps = live,
             detectorCoverageSteps = (state.detectorCoverageSteps - detectorOverlap).coerceAtLeast(0L),
             cumulativeCounterBackfillSteps = state.cumulativeCounterBackfillSteps + backfill,
-            rewardedEligibleSteps = maxOf(state.rewardedEligibleSteps, displayed)
+            rewardedEligibleSteps = maxOf(state.rewardedEligibleSteps, state.confirmedHealthSteps + live)
         )
     }
 
