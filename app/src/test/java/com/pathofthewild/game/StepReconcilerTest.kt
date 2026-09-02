@@ -78,7 +78,7 @@ class StepReconcilerTest {
     }
 
     @Test
-    fun counterReset_incrementsEpochWithoutErasingCurrentCoverageOrProgress() {
+    fun counterReset_setsNewBaselineAndClearsPreBaselineDetectorCoverage() {
         var state = StepLedgerState(lastSensorRaw = 100f)
         repeat(10) { state = StepReconciler.observeDetector(state) }
 
@@ -86,8 +86,24 @@ class StepReconcilerTest {
 
         assertEquals(10L, state.displayedSteps)
         assertEquals(1, state.sensorEpoch)
-        assertEquals(10L, state.detectorCoverageSteps)
+        assertEquals(0L, state.detectorCoverageSteps)
         assertEquals(50f, state.lastSensorRaw)
+    }
+
+    @Test
+    fun afterCounterReset_newDetectorStepsAreNotReplayedAndLaterBackfillIsExact() {
+        var state = StepLedgerState(lastSensorRaw = 100f)
+        repeat(10) { state = StepReconciler.observeDetector(state) }
+        state = StepReconciler.observeSensor(state, 50f)
+
+        repeat(10) { state = StepReconciler.observeDetector(state) }
+        state = StepReconciler.observeSensor(state, 60f)
+        assertEquals(20L, state.displayedSteps)
+        assertEquals(0L, state.detectorCoverageSteps)
+
+        state = StepReconciler.observeSensor(state, 100f)
+        assertEquals(60L, state.displayedSteps)
+        assertEquals(40L, state.cumulativeCounterBackfillSteps)
     }
 
     @Test
