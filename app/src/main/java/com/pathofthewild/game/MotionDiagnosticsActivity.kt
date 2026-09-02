@@ -57,20 +57,50 @@ class MotionDiagnosticsActivity : ComponentActivity() {
         addSpacer()
         addLine("Foreground service", if (snapshot.serviceRunning) "Running" else "Stopped")
         addLine("Custom confirmed steps", snapshot.confirmedStepCount.toString())
-        addLine("Raw motion candidates", snapshot.rawCandidateCount.toString())
-        addLine("Rejected candidates", snapshot.rejectedCandidateCount.toString())
-        addLine("Suspicious candidates", snapshot.suspiciousCandidateCount.toString())
+        addLine("Raw peak candidates", snapshot.rawCandidateCount.toString())
+        addLine("Rejected candidates — total", snapshot.rejectedCandidateCount.toString())
+        addLine("↳ rotational / phone-swing", snapshot.rejectedRotationalCount.toString())
+        addLine("↳ weak peak→valley cycle", snapshot.rejectedWeakCycleCount.toString())
+        addLine("↳ peak without valid valley", snapshot.rejectedNoValleyCount.toString())
+        addLine("↳ too sideways", snapshot.rejectedSidewaysCount.toString())
+        addLine("↳ too fast", snapshot.rejectedTooFastCount.toString())
+        addLine("Rotation-like candidates", snapshot.suspiciousCandidateCount.toString())
         addLine("Sensor samples processed", snapshot.sampleCount.toString())
-        addLine("Last vertical-motion fraction", String.format(Locale.US, "%.2f", snapshot.lastVerticalFraction))
+        addSpacer(8)
+        addText("Last completed candidate", 18f, true)
+        addLine("Peak→valley amplitude", String.format(Locale.US, "%.2f m/s²", snapshot.lastCycleAmplitude))
+        addLine("Peak cycle jerk", String.format(Locale.US, "%.1f m/s³", snapshot.lastCycleJerk))
+        addLine("Peak cycle gyro", String.format(Locale.US, "%.2f rad/s", snapshot.lastCycleGyro))
+        addLine("Vertical-motion fraction", String.format(Locale.US, "%.2f", snapshot.lastVerticalFraction))
+        addLine("Interval from previous plausible candidate", if (snapshot.lastCandidateIntervalMs > 0L) "${snapshot.lastCandidateIntervalMs} ms" else "—")
+        addSpacer(8)
+        addText("Adaptive walking model", 18f, true)
+        addLine("Accepted cycle amplitude mean", String.format(Locale.US, "%.2f m/s²", snapshot.acceptedAmplitudeMean))
+        addLine(
+            "Accepted cadence mean",
+            if (snapshot.acceptedIntervalMeanNs > 0L) "${snapshot.acceptedIntervalMeanNs / 1_000_000L} ms" else "Learning"
+        )
         addLine("Sensor stack", snapshot.sensorSummary)
         addLine(
             "Last motion update",
             if (snapshot.lastEventEpochMs > 0L) Instant.ofEpochMilli(snapshot.lastEventEpochMs).toString() else "None yet"
         )
         addSpacer()
-        addText("Test 1: walk 20 normal steps. Test 2: stand still and swing the phone back and forth about 20 times. Screenshot this screen after each test.", 16f, false)
+        addText(
+            "For a clean test, tap Reset shadow test first. Then walk exactly 20 normal steps, screenshot; stand still and swing the phone back/forth 20 times, screenshot; then turn the screen off and walk exactly 20 steps, screenshot again.",
+            16f,
+            false
+        )
         addSpacer()
 
+        Button(this).apply {
+            text = "Reset shadow test"
+            setOnClickListener {
+                MotionTrackingService.reset(this@MotionDiagnosticsActivity)
+                render()
+            }
+            content.addView(this, matchWidth())
+        }
         Button(this).apply {
             text = "Stop tracking"
             setOnClickListener {
