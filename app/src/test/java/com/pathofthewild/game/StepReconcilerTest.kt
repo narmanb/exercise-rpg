@@ -78,7 +78,7 @@ class StepReconcilerTest {
     }
 
     @Test
-    fun sensorReboot_incrementsEpochWithoutErasingProgress() {
+    fun counterReset_incrementsEpochWithoutErasingCurrentCoverageOrProgress() {
         var state = StepLedgerState(lastSensorRaw = 100f)
         repeat(10) { state = StepReconciler.observeDetector(state) }
 
@@ -86,7 +86,7 @@ class StepReconcilerTest {
 
         assertEquals(10L, state.displayedSteps)
         assertEquals(1, state.sensorEpoch)
-        assertEquals(0L, state.detectorCoverageSteps)
+        assertEquals(10L, state.detectorCoverageSteps)
         assertEquals(50f, state.lastSensorRaw)
     }
 
