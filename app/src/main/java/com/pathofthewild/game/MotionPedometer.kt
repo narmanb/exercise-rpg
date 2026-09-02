@@ -9,7 +9,12 @@ import kotlin.math.max
  * A step is no longer inferred from a single positive acceleration threshold. The detector waits
  * for a positive peak followed by a negative valley, validates the peak-to-valley amplitude and
  * timing, then uses a short cadence sequence before confirming steps. Rotationally dominated
- * phone-swing candidates reset cadence instead of becoming footsteps.
+ * phone-swing candidates are rejected instead of becoming footsteps.
+ *
+ * Once walking has been established, one isolated rejected motion candidate is tolerated without
+ * throwing away the cadence model. A second rejected candidate before another valid gait cycle
+ * drops the walking state. This lets normal walking survive occasional sensor/noise peaks while
+ * rejection-dominated hand motion still shuts the cadence down quickly.
  *
  * The peak/valley + adaptive-threshold structure follows established smartphone-pedometer research,
  * while the gyro/vertical-motion checks are Path of the Wild's own conservative target-device
@@ -174,6 +179,7 @@ internal object MotionPedometer {
         next = clearCycle(next).copy(
             cadenceCandidateCount = cadenceCount,
             walkingEstablished = wasEstablished || establishesNow,
+            consecutiveRejectedCandidates = 0,
             confirmedStepCount = state.confirmedStepCount + newlyConfirmed,
             lastPlausibleCandidateTimestampNs = timestampNs,
             acceptedAmplitudeMean = nextAmplitudeMean,
@@ -201,12 +207,18 @@ internal object MotionPedometer {
         jerk: Float,
         suspicious: Boolean = false
     ): MotionPedometerResult {
+        val rejectionStreak = state.consecutiveRejectedCandidates + 1
+        val preserveEstablishedCadence = state.walkingEstablished && rejectionStreak < 2
+
         var next = clearCycle(state).copy(
             rejectedCandidateCount = state.rejectedCandidateCount + 1L,
             suspiciousCandidateCount = state.suspiciousCandidateCount + if (suspicious) 1L else 0L,
-            cadenceCandidateCount = 0,
-            walkingEstablished = false,
-            lastPlausibleCandidateTimestampNs = null,
+            cadenceCandidateCount = if (preserveEstablishedCadence) state.cadenceCandidateCount else 0,
+            walkingEstablished = preserveEstablishedCadence,
+            consecutiveRejectedCandidates = rejectionStreak,
+            lastPlausibleCandidateTimestampNs = if (preserveEstablishedCadence) {
+                state.lastPlausibleCandidateTimestampNs
+            } else null,
             lastCycleAmplitude = amplitude,
             lastCycleJerk = jerk,
             lastCycleGyro = gyro,
@@ -285,6 +297,7 @@ internal data class MotionPedometerState(
     val rejectedNoValleyCount: Long = 0L,
     val cadenceCandidateCount: Int = 0,
     val walkingEstablished: Boolean = false,
+    val consecutiveRejectedCandidates: Int = 0,
     val filteredVertical: Float = 0f,
     val verticalEnergy: Float = 0f,
     val horizontalEnergy: Float = 0f,
