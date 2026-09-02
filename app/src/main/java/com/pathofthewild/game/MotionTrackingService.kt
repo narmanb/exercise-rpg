@@ -76,9 +76,15 @@ class MotionTrackingService : Service(), SensorEventListener {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
-            stopTracking()
-            return START_NOT_STICKY
+        when (intent?.action) {
+            ACTION_STOP -> {
+                stopTracking()
+                return START_NOT_STICKY
+            }
+            ACTION_RESET -> {
+                resetShadowTracking()
+                return START_STICKY
+            }
         }
         return START_STICKY
     }
@@ -154,7 +160,7 @@ class MotionTrackingService : Service(), SensorEventListener {
 
         val candidateChanged = state.rawCandidateCount != lastCandidateCount
         val periodicPersist = lastPersistTimestampNs == 0L || event.timestamp - lastPersistTimestampNs >= 2_000_000_000L
-        if (candidateChanged || result.newlyConfirmedSteps > 0L || periodicPersist) {
+        if (candidateChanged || result.newlyConfirmedSteps > 0L || result.rejection != null || periodicPersist) {
             store.savePedometerState(state, System.currentTimeMillis())
             lastPersistTimestampNs = event.timestamp
             lastCandidateCount = state.rawCandidateCount
@@ -233,6 +239,17 @@ class MotionTrackingService : Service(), SensorEventListener {
         )
     }
 
+    private fun resetShadowTracking() {
+        state = MotionPedometerState()
+        lastCandidateCount = 0L
+        lastPersistTimestampNs = 0L
+        if (::store.isInitialized) {
+            store.resetShadowCounters()
+            store.setServiceState(running = true)
+            store.savePedometerState(state, System.currentTimeMillis())
+        }
+    }
+
     private fun stopTracking() {
         if (::sensorManager.isInitialized) sensorManager.unregisterListener(this)
         if (::store.isInitialized) {
@@ -246,6 +263,7 @@ class MotionTrackingService : Service(), SensorEventListener {
 
     companion object {
         const val ACTION_STOP = "com.pathofthewild.game.STOP_MOTION_TRACKING"
+        const val ACTION_RESET = "com.pathofthewild.game.RESET_MOTION_TRACKING"
         private const val CHANNEL_ID = "path_of_the_wild_motion_tracking"
         private const val NOTIFICATION_ID = 4107
 
@@ -263,6 +281,12 @@ class MotionTrackingService : Service(), SensorEventListener {
                 else context.startService(intent)
                 true
             }.getOrDefault(false)
+        }
+
+        fun reset(context: Context) {
+            val intent = Intent(context, MotionTrackingService::class.java).setAction(ACTION_RESET)
+            runCatching { context.startService(intent) }
+                .onFailure { MotionTrackingStore(context).resetShadowCounters() }
         }
 
         fun stop(context: Context) {
