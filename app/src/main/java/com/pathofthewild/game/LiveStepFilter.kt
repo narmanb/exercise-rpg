@@ -54,6 +54,21 @@ internal object LiveStepFilter {
     }
 }
 
+/** Process-lifetime detector counters for the Diagnostics screen. */
+internal object LiveStepRuntime {
+    private var state = LiveStepFilterState()
+
+    @Synchronized
+    fun observe(eventTimestampNs: Long, activitySignal: ActivitySignal?, nowEpochMs: Long): LiveStepFilterResult {
+        val result = LiveStepFilter.observe(state, eventTimestampNs, activitySignal, nowEpochMs)
+        state = result.state
+        return result
+    }
+
+    @Synchronized
+    fun snapshot(): LiveStepFilterState = state
+}
+
 internal data class LiveStepFilterState(
     val rawDetectorEvents: Long = 0L,
     val acceptedDetectorEvents: Long = 0L,
