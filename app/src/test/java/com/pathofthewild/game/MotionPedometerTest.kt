@@ -52,7 +52,7 @@ class MotionPedometerTest {
         val swing = feedGaitCycle(
             initial = state,
             peakTimestampNs = 2_000_000_000L,
-            horizontal = 5.5f,
+            horizontal = 2.5f,
             gyro = 4.0f,
             peak = 3.2f,
             valley = -2.2f
@@ -67,12 +67,12 @@ class MotionPedometerTest {
     }
 
     @Test
-    fun weakPeakValleyCycle_isRejected() {
+    fun weakPeakValleyCycle_isRejectedAgainstLearnedAmplitude() {
         val result = feedGaitCycle(
-            initial = MotionPedometerState(),
+            initial = MotionPedometerState(acceptedAmplitudeMean = 4.0f),
             peakTimestampNs = 1_000_000_000L,
-            peak = 0.95f,
-            valley = -0.45f,
+            peak = 3.2f,
+            valley = -2.3f,
             horizontal = 0.2f,
             gyro = 0.2f
         )
