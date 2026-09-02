@@ -47,6 +47,10 @@ internal object ActivitySignalRegistration {
         onSuccess: () -> Unit,
         onFailure: (Throwable) -> Unit
     ) {
+        // MainActivity calls this while visible and only after ACTIVITY_RECOGNITION is granted, which
+        // is also the safe point to launch the health foreground service on modern Android.
+        MotionTrackingService.start(context.applicationContext)
+
         runCatching {
             ActivityRecognition.getClient(context.applicationContext)
                 .requestActivityUpdates(DETECTION_INTERVAL_MS, pendingIntent(context))
