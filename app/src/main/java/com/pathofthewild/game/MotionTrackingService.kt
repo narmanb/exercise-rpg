@@ -120,7 +120,6 @@ class MotionTrackingService : Service(), SensorEventListener {
         val ay = event.values[1]
         val az = event.values[2]
 
-        // Fallback gravity estimate in case TYPE_GRAVITY is absent or temporarily stale.
         val gravityAlpha = 0.02f
         fallbackGravityX += gravityAlpha * (ax - fallbackGravityX)
         fallbackGravityY += gravityAlpha * (ay - fallbackGravityY)
@@ -169,8 +168,7 @@ class MotionTrackingService : Service(), SensorEventListener {
             stopTracking()
             return
         }
-        // 25 Hz is enough to resolve normal walking cadence while using substantially less power than
-        // game-rate/high-rate sampling.
+        // 25 Hz resolves normal walking cadence while using substantially less power than game-rate sampling.
         val samplingUs = 40_000
         sensorManager.registerListener(this, accel, samplingUs)
         gravitySensor?.let { sensorManager.registerListener(this, it, samplingUs) }
@@ -187,11 +185,11 @@ class MotionTrackingService : Service(), SensorEventListener {
     }
 
     private fun buildNotification(): Notification {
-        val openIntent = Intent(this, MainActivity::class.java)
-        val openPending = PendingIntent.getActivity(
+        val detailsIntent = Intent(this, MotionDiagnosticsActivity::class.java)
+        val detailsPending = PendingIntent.getActivity(
             this,
             10,
-            openIntent,
+            detailsIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val stopIntent = Intent(this, MotionTrackingService::class.java).setAction(ACTION_STOP)
@@ -210,8 +208,8 @@ class MotionTrackingService : Service(), SensorEventListener {
         return builder
             .setSmallIcon(android.R.drawable.ic_menu_directions)
             .setContentTitle("Path of the Wild activity tracking")
-            .setContentText("Custom motion tracking active · Stop to save battery")
-            .setContentIntent(openPending)
+            .setContentText("Custom motion tracking active · tap for details")
+            .setContentIntent(detailsPending)
             .setDeleteIntent(stopPending)
             .setCategory(Notification.CATEGORY_SERVICE)
             .setOnlyAlertOnce(true)
@@ -255,6 +253,9 @@ class MotionTrackingService : Service(), SensorEventListener {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
                 context.checkSelfPermission(Manifest.permission.ACTIVITY_RECOGNITION) != PackageManager.PERMISSION_GRANTED
             ) return false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+            ) return false
 
             return runCatching {
                 val intent = Intent(context, MotionTrackingService::class.java)
@@ -265,8 +266,7 @@ class MotionTrackingService : Service(), SensorEventListener {
         }
 
         fun stop(context: Context) {
-            val intent = Intent(context, MotionTrackingService::class.java).setAction(ACTION_STOP)
-            runCatching { context.startService(intent) }
+            context.stopService(Intent(context, MotionTrackingService::class.java))
         }
     }
 }
