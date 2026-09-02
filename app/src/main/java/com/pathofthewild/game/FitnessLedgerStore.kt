@@ -29,7 +29,9 @@ internal class FitnessLedgerStore(context: Context) {
             liveUnconfirmedSteps = prefs.getLong(KEY_LIVE_UNCONFIRMED, 0L).coerceAtLeast(0L),
             rewardedEligibleSteps = prefs.getLong(KEY_ELIGIBLE_STEPS, 0L).coerceAtLeast(0L),
             lastSensorRaw = if (prefs.contains(KEY_LAST_SENSOR_RAW)) prefs.getFloat(KEY_LAST_SENSOR_RAW, 0f) else null,
-            sensorEpoch = prefs.getInt(KEY_SENSOR_EPOCH, 0).coerceAtLeast(0)
+            sensorEpoch = prefs.getInt(KEY_SENSOR_EPOCH, 0).coerceAtLeast(0),
+            detectorCoverageSteps = prefs.getLong(KEY_DETECTOR_COVERAGE, 0L).coerceAtLeast(0L),
+            cumulativeCounterBackfillSteps = prefs.getLong(KEY_COUNTER_BACKFILL, 0L).coerceAtLeast(0L)
         )
     }
 
@@ -39,6 +41,8 @@ internal class FitnessLedgerStore(context: Context) {
             .putLong(KEY_LIVE_UNCONFIRMED, state.liveUnconfirmedSteps.coerceAtLeast(0L))
             .putLong(KEY_ELIGIBLE_STEPS, state.rewardedEligibleSteps.coerceAtLeast(0L))
             .putInt(KEY_SENSOR_EPOCH, state.sensorEpoch.coerceAtLeast(0))
+            .putLong(KEY_DETECTOR_COVERAGE, state.detectorCoverageSteps.coerceAtLeast(0L))
+            .putLong(KEY_COUNTER_BACKFILL, state.cumulativeCounterBackfillSteps.coerceAtLeast(0L))
             .apply {
                 if (state.lastSensorRaw != null) putFloat(KEY_LAST_SENSOR_RAW, state.lastSensorRaw)
                 else remove(KEY_LAST_SENSOR_RAW)
@@ -80,7 +84,9 @@ internal class FitnessLedgerStore(context: Context) {
                 liveUnconfirmedSteps = 0L,
                 rewardedEligibleSteps = 0L,
                 lastSensorRaw = sensorBaseline,
-                sensorEpoch = 0
+                sensorEpoch = 0,
+                detectorCoverageSteps = 0L,
+                cumulativeCounterBackfillSteps = 0L
             )
         )
         saveRewardLedger(FitnessRewardState())
@@ -93,6 +99,8 @@ internal class FitnessLedgerStore(context: Context) {
         private const val KEY_ELIGIBLE_STEPS = "fitness_eligible_steps"
         private const val KEY_LAST_SENSOR_RAW = "fitness_last_sensor_raw"
         private const val KEY_SENSOR_EPOCH = "fitness_sensor_epoch"
+        private const val KEY_DETECTOR_COVERAGE = "fitness_detector_counter_coverage_steps"
+        private const val KEY_COUNTER_BACKFILL = "fitness_counter_backfill_steps"
         private const val KEY_LAST_REWARDED_ELIGIBLE = "fitness_last_rewarded_eligible_steps"
         private const val KEY_WALKING_XP_GRANTED = "fitness_walking_xp_granted"
         private const val KEY_ADVENTURE_GRANTED = "fitness_adventure_points_granted"
