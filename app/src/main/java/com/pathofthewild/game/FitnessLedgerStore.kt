@@ -1,16 +1,18 @@
 package com.pathofthewild.game
 
 import android.content.Context
+import android.provider.Settings
 
 /**
  * Durable fitness bookkeeping stored alongside the current prototype save.
  *
  * This is deliberately independent from Health Connect: Health Connect supplies observations,
  * while this ledger records what the RPG has already confirmed/displayed/rewarded. That prevents
- * delayed provider syncs, app restarts, and sensor reboots from replaying rewards.
+ * delayed provider syncs, app restarts, and sensor resets from replaying rewards.
  */
 internal class FitnessLedgerStore(context: Context) {
-    private val prefs = context.getSharedPreferences("path_of_the_wild_save", Context.MODE_PRIVATE)
+    private val appContext = context.applicationContext
+    private val prefs = appContext.getSharedPreferences("path_of_the_wild_save", Context.MODE_PRIVATE)
 
     /**
      * A pre-ledger prototype character may already have a raw sensor baseline. Seeding lastSensorRaw
@@ -24,13 +26,25 @@ internal class FitnessLedgerStore(context: Context) {
         if (!hasModernLedger) {
             return StepLedgerState(lastSensorRaw = legacySensorBaseline)
         }
+
+        val persistedCoverage = prefs.getLong(KEY_DETECTOR_COVERAGE, 0L).coerceAtLeast(0L)
+        val persistedBootCount = prefs.getInt(KEY_DETECTOR_BOOT_COUNT, Int.MIN_VALUE)
+        val currentBootCount = currentBootCount()
+        val safeCoverage = when {
+            persistedCoverage == 0L -> 0L
+            persistedBootCount == Int.MIN_VALUE -> 0L
+            currentBootCount == Int.MIN_VALUE -> persistedCoverage
+            persistedBootCount == currentBootCount -> persistedCoverage
+            else -> 0L
+        }
+
         return StepLedgerState(
             confirmedHealthSteps = prefs.getLong(KEY_CONFIRMED_HEALTH, 0L).coerceAtLeast(0L),
             liveUnconfirmedSteps = prefs.getLong(KEY_LIVE_UNCONFIRMED, 0L).coerceAtLeast(0L),
             rewardedEligibleSteps = prefs.getLong(KEY_ELIGIBLE_STEPS, 0L).coerceAtLeast(0L),
             lastSensorRaw = if (prefs.contains(KEY_LAST_SENSOR_RAW)) prefs.getFloat(KEY_LAST_SENSOR_RAW, 0f) else null,
             sensorEpoch = prefs.getInt(KEY_SENSOR_EPOCH, 0).coerceAtLeast(0),
-            detectorCoverageSteps = prefs.getLong(KEY_DETECTOR_COVERAGE, 0L).coerceAtLeast(0L),
+            detectorCoverageSteps = safeCoverage,
             cumulativeCounterBackfillSteps = prefs.getLong(KEY_COUNTER_BACKFILL, 0L).coerceAtLeast(0L)
         )
     }
@@ -43,6 +57,7 @@ internal class FitnessLedgerStore(context: Context) {
             .putInt(KEY_SENSOR_EPOCH, state.sensorEpoch.coerceAtLeast(0))
             .putLong(KEY_DETECTOR_COVERAGE, state.detectorCoverageSteps.coerceAtLeast(0L))
             .putLong(KEY_COUNTER_BACKFILL, state.cumulativeCounterBackfillSteps.coerceAtLeast(0L))
+            .putInt(KEY_DETECTOR_BOOT_COUNT, currentBootCount())
             .apply {
                 if (state.lastSensorRaw != null) putFloat(KEY_LAST_SENSOR_RAW, state.lastSensorRaw)
                 else remove(KEY_LAST_SENSOR_RAW)
@@ -93,6 +108,10 @@ internal class FitnessLedgerStore(context: Context) {
         prefs.edit().remove(KEY_LAST_HEALTH_SYNC).apply()
     }
 
+    private fun currentBootCount(): Int = runCatching {
+        Settings.Global.getInt(appContext.contentResolver, Settings.Global.BOOT_COUNT, Int.MIN_VALUE)
+    }.getOrDefault(Int.MIN_VALUE)
+
     companion object {
         private const val KEY_CONFIRMED_HEALTH = "fitness_confirmed_health_steps"
         private const val KEY_LIVE_UNCONFIRMED = "fitness_live_unconfirmed_steps"
@@ -101,6 +120,7 @@ internal class FitnessLedgerStore(context: Context) {
         private const val KEY_SENSOR_EPOCH = "fitness_sensor_epoch"
         private const val KEY_DETECTOR_COVERAGE = "fitness_detector_counter_coverage_steps"
         private const val KEY_COUNTER_BACKFILL = "fitness_counter_backfill_steps"
+        private const val KEY_DETECTOR_BOOT_COUNT = "fitness_detector_boot_count"
         private const val KEY_LAST_REWARDED_ELIGIBLE = "fitness_last_rewarded_eligible_steps"
         private const val KEY_WALKING_XP_GRANTED = "fitness_walking_xp_granted"
         private const val KEY_ADVENTURE_GRANTED = "fitness_adventure_points_granted"
