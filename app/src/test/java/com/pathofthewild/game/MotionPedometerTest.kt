@@ -44,7 +44,64 @@ class MotionPedometerTest {
     }
 
     @Test
-    fun rotationalPhoneSwing_isRejectedAndBreaksCadence() {
+    fun oneRejectedCandidate_doesNotDestroyEstablishedWalking() {
+        var state = establishedWalkingState()
+        val rejected = feedGaitCycle(
+            initial = state,
+            peakTimestampNs = 2_400_000_000L,
+            horizontal = 2.5f,
+            gyro = 4.0f,
+            peak = 3.2f,
+            valley = -2.2f
+        )
+        state = rejected.state
+
+        assertEquals(MotionCandidateRejection.RotationalSwing, rejected.rejection)
+        assertTrue(state.walkingEstablished)
+        assertEquals(1, state.consecutiveRejectedCandidates)
+        assertEquals(3L, state.confirmedStepCount)
+
+        val nextRealStep = feedGaitCycle(state, 2_800_000_000L)
+        assertEquals(1L, nextRealStep.newlyConfirmedSteps)
+        assertEquals(4L, nextRealStep.state.confirmedStepCount)
+        assertTrue(nextRealStep.state.walkingEstablished)
+        assertEquals(0, nextRealStep.state.consecutiveRejectedCandidates)
+    }
+
+    @Test
+    fun twoRejectedCandidates_dropEstablishedWalking() {
+        var state = establishedWalkingState()
+        state = feedGaitCycle(
+            initial = state,
+            peakTimestampNs = 2_400_000_000L,
+            horizontal = 2.5f,
+            gyro = 4.0f,
+            peak = 3.2f,
+            valley = -2.2f
+        ).state
+        val secondRejected = feedGaitCycle(
+            initial = state,
+            peakTimestampNs = 2_800_000_000L,
+            horizontal = 2.5f,
+            gyro = 4.0f,
+            peak = 3.2f,
+            valley = -2.2f
+        )
+        state = secondRejected.state
+
+        assertEquals(MotionCandidateRejection.RotationalSwing, secondRejected.rejection)
+        assertFalse(state.walkingEstablished)
+        assertEquals(0, state.cadenceCandidateCount)
+        assertEquals(2, state.consecutiveRejectedCandidates)
+
+        val firstRecoveryCandidate = feedGaitCycle(state, 3_300_000_000L)
+        assertEquals(0L, firstRecoveryCandidate.newlyConfirmedSteps)
+        assertEquals(3L, firstRecoveryCandidate.state.confirmedStepCount)
+        assertFalse(firstRecoveryCandidate.state.walkingEstablished)
+    }
+
+    @Test
+    fun rotationalPhoneSwing_isRejectedAndBreaksUnestablishedCadence() {
         var state = MotionPedometerState()
         repeat(2) { index ->
             state = feedGaitCycle(state, 1_000_000_000L + index * 500_000_000L).state
@@ -110,6 +167,14 @@ class MotionPedometerTest {
         val third = feedGaitCycle(state, 5_000_000_000L)
         assertEquals(6L, third.state.confirmedStepCount)
         assertEquals(3L, third.newlyConfirmedSteps)
+    }
+
+    private fun establishedWalkingState(): MotionPedometerState {
+        var state = MotionPedometerState()
+        repeat(3) { index ->
+            state = feedGaitCycle(state, 1_000_000_000L + index * 500_000_000L).state
+        }
+        return state
     }
 
     private fun feedGaitCycle(
