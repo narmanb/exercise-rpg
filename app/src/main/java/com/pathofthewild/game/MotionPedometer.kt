@@ -11,7 +11,9 @@ import kotlin.math.max
  * timing, then uses a short cadence sequence before confirming steps. Rotationally dominated
  * phone-swing candidates reset cadence instead of becoming footsteps.
  *
- * Output remains diagnostic only until target-device tests are good enough to make it authoritative.
+ * The peak/valley + adaptive-threshold structure follows established smartphone-pedometer research,
+ * while the gyro/vertical-motion checks are Path of the Wild's own conservative target-device
+ * filters. Output remains diagnostic only until phone tests are good enough to make it authoritative.
  */
 internal object MotionPedometer {
     const val MIN_STEP_INTERVAL_NS = 280_000_000L
@@ -23,9 +25,6 @@ internal object MotionPedometer {
     const val MIN_CYCLE_AMPLITUDE_MPS2 = 1.18f
     const val MIN_VERTICAL_FRACTION = 0.17f
 
-    // Phone-only swings tend to be dominated by rotation and sideways acceleration. These values are
-    // intentionally conservative for the first target-device pass: they reject strong evidence of a
-    // rotational swing but do not reject ordinary high-gyro walking by gyro alone.
     const val ROTATIONAL_GYRO_RAD_S = 2.0f
     const val ROTATIONAL_VERTICAL_FRACTION = 0.42f
     const val STRONG_ROTATIONAL_GYRO_RAD_S = 3.2f
@@ -109,7 +108,6 @@ internal object MotionPedometer {
             return rejectCycle(
                 state = next,
                 rejection = MotionCandidateRejection.NoValley,
-                timestampNs = timestampNs,
                 amplitude = (cyclePeak - cycleValley).coerceAtLeast(0f),
                 intervalNs = null,
                 verticalFraction = currentVerticalFraction(verticalEnergy, horizontalEnergy),
@@ -118,8 +116,6 @@ internal object MotionPedometer {
             )
         }
 
-        // Finalize after the negative valley has started rising again. This captures a complete
-        // peak-to-valley gait shape rather than an arbitrary threshold crossing.
         val completesCycle = valleySeen &&
             state.filteredVertical <= VALLEY_THRESHOLD_MPS2 &&
             filteredVertical > state.filteredVertical
@@ -148,7 +144,6 @@ internal object MotionPedometer {
             return rejectCycle(
                 state = next,
                 rejection = rejection,
-                timestampNs = timestampNs,
                 amplitude = amplitude,
                 intervalNs = intervalNs,
                 verticalFraction = verticalFraction,
@@ -159,7 +154,7 @@ internal object MotionPedometer {
         }
 
         val cadenceContinues = intervalNs != null && intervalNs in MIN_STEP_INTERVAL_NS..MAX_STEP_INTERVAL_NS
-        val adaptiveCadenceContinues = cadenceContinues && cadenceFitsAdaptiveWindow(state, intervalNs!!)
+        val adaptiveCadenceContinues = cadenceContinues && cadenceFitsAdaptiveWindow(state, intervalNs)
         val cadenceCount = if (adaptiveCadenceContinues) state.cadenceCandidateCount + 1 else 1
         val wasEstablished = state.walkingEstablished && adaptiveCadenceContinues
         val establishesNow = !wasEstablished && cadenceCount >= 3
@@ -199,7 +194,6 @@ internal object MotionPedometer {
     private fun rejectCycle(
         state: MotionPedometerState,
         rejection: MotionCandidateRejection,
-        timestampNs: Long,
         amplitude: Float,
         intervalNs: Long?,
         verticalFraction: Float,
@@ -247,8 +241,6 @@ internal object MotionPedometer {
     private fun adaptivePeakThreshold(state: MotionPedometerState): Float {
         val mean = state.acceptedAmplitudeMean
         if (mean <= 0f) return PEAK_THRESHOLD_MPS2
-        // Peak is only one side of a peak-valley cycle, so use a conservative fraction of the
-        // recent accepted cycle amplitude while keeping a stable floor.
         return max(PEAK_THRESHOLD_MPS2, (mean * 0.32f).coerceAtMost(1.25f))
     }
 
