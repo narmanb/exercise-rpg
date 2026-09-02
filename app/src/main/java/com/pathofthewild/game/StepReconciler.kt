@@ -19,9 +19,13 @@ internal object StepReconciler {
         if (previousRaw == null) return state.copy(lastSensorRaw = rawSensorSteps)
 
         if (rawSensorSteps < previousRaw) {
+            // TYPE_STEP_COUNTER reset (normally a reboot). The current raw value becomes the new
+            // cumulative baseline, so detector events already represented before this observation
+            // must not remain as overlap against future counter deltas.
             return state.copy(
                 lastSensorRaw = rawSensorSteps,
-                sensorEpoch = state.sensorEpoch + 1
+                sensorEpoch = state.sensorEpoch + 1,
+                detectorCoverageSteps = 0L
             )
         }
 
