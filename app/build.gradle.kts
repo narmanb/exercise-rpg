@@ -11,10 +11,25 @@ android {
         applicationId = "com.pathofthewild.game"
         minSdk = 28
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 5
+        versionName = "0.1.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        create("development") {
+            storeFile = rootProject.file("dev-signing/path-of-the-wild-development.p12")
+            storePassword = "potwdev"
+            keyAlias = "pathofthewild-dev"
+            keyPassword = "potwdev"
+        }
+    }
+
+    buildTypes {
+        getByName("debug") {
+            signingConfig = signingConfigs.getByName("development")
+        }
     }
 
     buildFeatures {

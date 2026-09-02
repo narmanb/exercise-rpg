@@ -93,6 +93,7 @@ import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
@@ -200,6 +201,7 @@ private fun PathOfTheWildApp() {
     }
     var rawSensorSteps by remember { mutableFloatStateOf(-1f) }
     var hasStepSensor by remember { mutableStateOf(false) }
+    var hasStepDetector by remember { mutableStateOf(false) }
     val lifecycleOwner = remember(context) {
         var current: Context? = context
         while (current is ContextWrapper && current !is LifecycleOwner) {
@@ -352,13 +354,33 @@ private fun PathOfTheWildApp() {
         )
     }
 
-    DisposableEffect(activityPermissionGranted, isForeground) {
+    DisposableEffect(activityPermissionGranted, isForeground, activitySignal, profile?.createdAtEpochMs) {
         val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
         val stepSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
+        val stepDetector = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR)
         hasStepSensor = stepSensor != null
+        hasStepDetector = stepDetector != null
         val listener = object : SensorEventListener {
             override fun onSensorChanged(event: SensorEvent) {
-                rawSensorSteps = event.values.firstOrNull() ?: -1f
+                when (event.sensor.type) {
+                    Sensor.TYPE_STEP_COUNTER -> {
+                        rawSensorSteps = event.values.firstOrNull() ?: -1f
+                    }
+                    Sensor.TYPE_STEP_DETECTOR -> {
+                        if (profile == null) return
+                        val result = LiveStepRuntime.observe(
+                            eventTimestampNs = event.timestamp,
+                            activitySignal = activitySignal,
+                            nowEpochMs = System.currentTimeMillis()
+                        )
+                        if (!result.accepted) return
+                        val observed = StepReconciler.observeDetector(stepLedger)
+                        if (observed != stepLedger) {
+                            stepLedger = observed
+                            fitnessStore.saveStepLedger(observed)
+                        }
+                    }
+                }
             }
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
         }
@@ -371,6 +393,15 @@ private fun PathOfTheWildApp() {
         ) {
             sensorManager.registerListener(listener, stepSensor, SensorManager.SENSOR_DELAY_NORMAL)
         }
+        if (
+            FitnessForegroundPolicy.shouldRegisterStepSensor(
+                isForeground = isForeground,
+                activityPermissionGranted = activityPermissionGranted,
+                hasStepSensor = stepDetector != null
+            ) && stepDetector != null
+        ) {
+            sensorManager.registerListener(listener, stepDetector, SensorManager.SENSOR_DELAY_NORMAL)
+        }
         onDispose { sensorManager.unregisterListener(listener) }
     }
 
@@ -382,9 +413,12 @@ private fun PathOfTheWildApp() {
         }
     }
 
-    LaunchedEffect(profile?.createdAtEpochMs, rawSensorSteps) {
+    LaunchedEffect(profile?.createdAtEpochMs, rawSensorSteps, hasStepDetector) {
         val p = profile ?: return@LaunchedEffect
         if (rawSensorSteps < 0f) return@LaunchedEffect
+        // Give the immediate detector a short window to claim the same footfalls first. This avoids
+        // counter-first callback ordering from making one real step look like two.
+        if (hasStepDetector) delay(750L)
         if (p.sensorBaseline == null) {
             store.setSensorBaseline(rawSensorSteps)
             profile = store.loadProfile()
@@ -418,7 +452,7 @@ private fun PathOfTheWildApp() {
     val momentumAvailable = rewardLedger.momentumAvailable
     val trackingMode = ActivitySignalRules.trackingMode(
         healthConnected = healthSdkStatus == HealthConnectClient.SDK_AVAILABLE && healthPermissionGranted,
-        hasStepSensor = hasStepSensor,
+        hasStepSensor = hasStepSensor || hasStepDetector,
         activityPermissionGranted = activityPermissionGranted
     )
 
@@ -436,7 +470,7 @@ private fun PathOfTheWildApp() {
     if (profile == null) {
         CharacterCreationScreen(
             healthStatus = healthStatusLabel(healthSdkStatus, healthPermissionGranted),
-            sensorStatus = sensorStatusLabel(hasStepSensor, activityPermissionGranted),
+            sensorStatus = sensorStatusLabel(hasStepSensor || hasStepDetector, activityPermissionGranted),
             onRequestHealth = {
                 if (healthSdkStatus == HealthConnectClient.SDK_AVAILABLE) {
                     healthPermissionLauncher.launch(setOf(readStepsPermission))
@@ -505,6 +539,7 @@ private fun PathOfTheWildApp() {
                         healthLastSyncEpochMs = healthLastSyncEpochMs,
                         healthError = healthError,
                         hasStepSensor = hasStepSensor,
+                        hasStepDetector = hasStepDetector,
                         activityPermissionGranted = activityPermissionGranted,
                         activitySignal = activitySignal,
                         activitySamplingStatus = activitySamplingStatus,
@@ -552,19 +587,20 @@ private fun PathOfTheWildApp() {
                     walkingXp = walkingXp,
                     levelProgress = levelProgress,
                     adventureAvailable = adventureAvailable,
-                        momentumAvailable = momentumAvailable,
-                        onSpendMomentum = ::spendMomentum,
+                    momentumAvailable = momentumAvailable,
+                    onSpendMomentum = ::spendMomentum,
                     healthSdkStatus = healthSdkStatus,
                     healthPermissionGranted = healthPermissionGranted,
                     healthTodaySteps = healthTodaySteps,
                     healthCharacterSteps = healthCharacterSteps,
-                        healthLastSyncEpochMs = healthLastSyncEpochMs,
+                    healthLastSyncEpochMs = healthLastSyncEpochMs,
                     healthError = healthError,
                     hasStepSensor = hasStepSensor,
+                    hasStepDetector = hasStepDetector,
                     activityPermissionGranted = activityPermissionGranted,
-                        activitySignal = activitySignal,
-                        activitySamplingStatus = activitySamplingStatus,
-                        trackingMode = trackingMode,
+                    activitySignal = activitySignal,
+                    activitySamplingStatus = activitySamplingStatus,
+                    trackingMode = trackingMode,
                     rawSensorSteps = rawSensorSteps,
                     sensorDelta = sensorDelta,
                     stepLedger = stepLedger,
@@ -664,6 +700,7 @@ private fun DestinationContent(
     healthLastSyncEpochMs: Long?,
     healthError: String?,
     hasStepSensor: Boolean,
+    hasStepDetector: Boolean,
     activityPermissionGranted: Boolean,
     activitySignal: ActivitySignal?,
     activitySamplingStatus: String,
@@ -693,7 +730,7 @@ private fun DestinationContent(
                     healthStatus = healthStatusLabel(healthSdkStatus, healthPermissionGranted),
                     healthPermissionGranted = healthPermissionGranted,
                     healthLastSyncEpochMs = healthLastSyncEpochMs,
-                    sensorStatus = sensorStatusLabel(hasStepSensor, activityPermissionGranted),
+                    sensorStatus = sensorStatusLabel(hasStepSensor || hasStepDetector, activityPermissionGranted),
                     activityPermissionGranted = activityPermissionGranted,
                     activitySamplingStatus = activitySamplingStatus,
                     activitySignal = activitySignal,
@@ -714,6 +751,7 @@ private fun DestinationContent(
             healthLastSyncEpochMs = healthLastSyncEpochMs,
             healthError = healthError,
             hasStepSensor = hasStepSensor,
+            hasStepDetector = hasStepDetector,
             activityPermissionGranted = activityPermissionGranted,
             activitySignal = activitySignal,
             activitySamplingStatus = activitySamplingStatus,
@@ -1109,6 +1147,7 @@ private fun DiagnosticsScreen(
     healthLastSyncEpochMs: Long?,
     healthError: String?,
     hasStepSensor: Boolean,
+    hasStepDetector: Boolean,
     activityPermissionGranted: Boolean,
     activitySignal: ActivitySignal?,
     activitySamplingStatus: String,
@@ -1127,6 +1166,7 @@ private fun DiagnosticsScreen(
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
             runCatching { SdkExtensions.getExtensionVersion(Build.VERSION_CODES.UPSIDE_DOWN_CAKE) >= 20 }.getOrDefault(false)
     }
+    val liveDetector = LiveStepRuntime.snapshot()
     ScreenColumn(modifier) {
         item {
             ResponsiveCard {
@@ -1143,6 +1183,12 @@ private fun DiagnosticsScreen(
                 DiagnosticLine("Health Connect last successful sync", healthLastSyncEpochMs?.let { Instant.ofEpochMilli(it).toString() } ?: "Not yet")
                 DiagnosticLine("Ledger confirmed Health steps", stepLedger.confirmedHealthSteps.toString())
                 DiagnosticLine("Live unsynced sensor steps", stepLedger.liveUnconfirmedSteps.toString())
+                DiagnosticLine("Detector raw events this session", liveDetector.rawDetectorEvents.toString())
+                DiagnosticLine("Detector accepted this session", liveDetector.acceptedDetectorEvents.toString())
+                DiagnosticLine("Detector rejected impossible bursts", liveDetector.rejectedDetectorEvents.toString())
+                DiagnosticLine("Detector suspicious activity-context events", liveDetector.suspiciousDetectorEvents.toString())
+                DiagnosticLine("Detector pending counter coverage", stepLedger.detectorCoverageSteps.toString())
+                DiagnosticLine("Counter backfill accepted total", stepLedger.cumulativeCounterBackfillSteps.toString())
                 DiagnosticLine("Rewarded eligible-step watermark", rewardLedger.lastRewardedEligibleSteps.toString())
                 DiagnosticLine("Walking XP granted", rewardLedger.totalWalkingXpGranted.toString())
                 DiagnosticLine("Adventure Points granted", rewardLedger.totalAdventurePointsGranted.toString())
@@ -1157,6 +1203,7 @@ private fun DiagnosticsScreen(
                 DiagnosticLine("Health Connect SDK", healthStatusLabel(healthSdkStatus, healthPermissionGranted))
                 DiagnosticLine("Health Connect on-device step collection", if (onDeviceHealthStepsAvailable) "Supported" else "Not supported by this OS/module")
                 DiagnosticLine("Hardware TYPE_STEP_COUNTER", if (hasStepSensor) "Available" else "Unavailable")
+                DiagnosticLine("Hardware TYPE_STEP_DETECTOR", if (hasStepDetector) "Available" else "Unavailable")
                 DiagnosticLine("Activity Recognition permission", if (activityPermissionGranted) "Granted" else "Not granted")
                 DiagnosticLine("Activity Recognition sampler", activitySamplingStatus)
                 healthError?.let { DiagnosticLine("Health Connect error", it) }
@@ -1190,7 +1237,7 @@ private fun DiagnosticsScreen(
                     DiagnosticLine("Signal age", ActivitySignalRules.age(signal, System.currentTimeMillis()).label)
                     DiagnosticLine("Observed", Instant.ofEpochMilli(signal.observedAtEpochMs).toString())
                 }
-                Text("Observation only — activity recognition does not reject or alter step rewards yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Activity Recognition currently marks strong Still/In vehicle detector events as suspicious for diagnostics, but does not reject them. Only physically implausible detector callbacks less than 120 ms apart are rejected while device behavior is being tested.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
 
@@ -1200,7 +1247,7 @@ private fun DiagnosticsScreen(
                 DiagnosticLine("Created", Instant.ofEpochMilli(profile.createdAtEpochMs).toString())
                 DiagnosticLine("Health baseline at creation", profile.healthBaselineToday?.toString() ?: "Not available at creation")
                 DiagnosticLine("Sensor baseline at creation", profile.sensorBaseline?.toLong()?.toString() ?: "Not available at creation")
-                Text("The persistent reconciliation and reward ledgers are active. Health Connect confirmations consume matching live sensor steps instead of being added twice, and rewarded thresholds are stored separately so restarts cannot replay XP or Adventure Points.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("The persistent reconciliation and reward ledgers are active. Detector events are shown immediately, TYPE_STEP_COUNTER adds only missed backfill beyond detector coverage, Health Connect confirmations consume matching unconfirmed steps, and rewarded thresholds remain monotonic across restarts and provider corrections.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
