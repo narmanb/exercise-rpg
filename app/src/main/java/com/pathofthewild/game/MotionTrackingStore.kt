@@ -14,6 +14,11 @@ internal data class MotionTrackingSnapshot(
     val rejectedWeakCycleCount: Long = 0L,
     val rejectedRotationalCount: Long = 0L,
     val rejectedNoValleyCount: Long = 0L,
+    val oxfordStepCount: Long = 0L,
+    val oxfordPeakCandidateCount: Long = 0L,
+    val oxfordScoreSampleCount: Long = 0L,
+    val oxfordDetectorMean: Float = 0f,
+    val oxfordDetectorStd: Float = 0f,
     val serviceRunning: Boolean = false,
     val lastEventEpochMs: Long = 0L,
     val sensorSummary: String = "Not started",
@@ -57,6 +62,11 @@ internal class MotionTrackingStore(context: Context) {
         rejectedWeakCycleCount = prefs.getLong(KEY_REJECTED_WEAK, 0L).coerceAtLeast(0L),
         rejectedRotationalCount = prefs.getLong(KEY_REJECTED_ROTATIONAL, 0L).coerceAtLeast(0L),
         rejectedNoValleyCount = prefs.getLong(KEY_REJECTED_NO_VALLEY, 0L).coerceAtLeast(0L),
+        oxfordStepCount = prefs.getLong(KEY_OXFORD_STEPS, 0L).coerceAtLeast(0L),
+        oxfordPeakCandidateCount = prefs.getLong(KEY_OXFORD_PEAK_CANDIDATES, 0L).coerceAtLeast(0L),
+        oxfordScoreSampleCount = prefs.getLong(KEY_OXFORD_SCORE_SAMPLES, 0L).coerceAtLeast(0L),
+        oxfordDetectorMean = prefs.getFloat(KEY_OXFORD_DETECTOR_MEAN, 0f),
+        oxfordDetectorStd = prefs.getFloat(KEY_OXFORD_DETECTOR_STD, 0f).coerceAtLeast(0f),
         serviceRunning = prefs.getBoolean(KEY_SERVICE_RUNNING, false),
         lastEventEpochMs = prefs.getLong(KEY_LAST_EVENT_MS, 0L).coerceAtLeast(0L),
         sensorSummary = prefs.getString(KEY_SENSOR_SUMMARY, "Not started").orEmpty().ifBlank { "Not started" },
@@ -69,7 +79,11 @@ internal class MotionTrackingStore(context: Context) {
         acceptedIntervalMeanNs = prefs.getLong(KEY_ACCEPTED_INTERVAL_MEAN_NS, 0L).coerceAtLeast(0L)
     )
 
-    fun savePedometerState(state: MotionPedometerState, eventEpochMs: Long) {
+    fun savePedometerState(
+        state: MotionPedometerState,
+        oxford: OxfordShadowSnapshot,
+        eventEpochMs: Long
+    ) {
         prefs.edit()
             .putLong(KEY_SAMPLE_COUNT, state.sampleCount.coerceAtLeast(0L))
             .putLong(KEY_RAW_CANDIDATES, state.rawCandidateCount.coerceAtLeast(0L))
@@ -81,6 +95,11 @@ internal class MotionTrackingStore(context: Context) {
             .putLong(KEY_REJECTED_WEAK, state.rejectedWeakCycleCount.coerceAtLeast(0L))
             .putLong(KEY_REJECTED_ROTATIONAL, state.rejectedRotationalCount.coerceAtLeast(0L))
             .putLong(KEY_REJECTED_NO_VALLEY, state.rejectedNoValleyCount.coerceAtLeast(0L))
+            .putLong(KEY_OXFORD_STEPS, oxford.stepCount.coerceAtLeast(0L))
+            .putLong(KEY_OXFORD_PEAK_CANDIDATES, oxford.peakCandidateCount.coerceAtLeast(0L))
+            .putLong(KEY_OXFORD_SCORE_SAMPLES, oxford.scoreSampleCount.coerceAtLeast(0L))
+            .putFloat(KEY_OXFORD_DETECTOR_MEAN, oxford.detectorMean)
+            .putFloat(KEY_OXFORD_DETECTOR_STD, oxford.detectorStd.coerceAtLeast(0f))
             .putLong(KEY_LAST_EVENT_MS, eventEpochMs.coerceAtLeast(0L))
             .putFloat(KEY_LAST_VERTICAL_FRACTION, state.lastVerticalFraction.coerceIn(0f, 1f))
             .putFloat(KEY_LAST_CYCLE_AMPLITUDE, state.lastCycleAmplitude.coerceAtLeast(0f))
@@ -114,6 +133,11 @@ internal class MotionTrackingStore(context: Context) {
             .putLong(KEY_REJECTED_WEAK, 0L)
             .putLong(KEY_REJECTED_ROTATIONAL, 0L)
             .putLong(KEY_REJECTED_NO_VALLEY, 0L)
+            .putLong(KEY_OXFORD_STEPS, 0L)
+            .putLong(KEY_OXFORD_PEAK_CANDIDATES, 0L)
+            .putLong(KEY_OXFORD_SCORE_SAMPLES, 0L)
+            .putFloat(KEY_OXFORD_DETECTOR_MEAN, 0f)
+            .putFloat(KEY_OXFORD_DETECTOR_STD, 0f)
             .putLong(KEY_LAST_EVENT_MS, 0L)
             .putFloat(KEY_LAST_VERTICAL_FRACTION, 0f)
             .putFloat(KEY_LAST_CYCLE_AMPLITUDE, 0f)
@@ -148,6 +172,17 @@ internal class MotionTrackingStore(context: Context) {
         )
     }
 
+    fun initialOxfordSnapshot(): OxfordShadowSnapshot {
+        val snapshot = load()
+        return OxfordShadowSnapshot(
+            stepCount = snapshot.oxfordStepCount,
+            peakCandidateCount = snapshot.oxfordPeakCandidateCount,
+            scoreSampleCount = snapshot.oxfordScoreSampleCount,
+            detectorMean = snapshot.oxfordDetectorMean,
+            detectorStd = snapshot.oxfordDetectorStd
+        )
+    }
+
     companion object {
         private const val KEY_CHARACTER_CREATED = "character_created"
         private const val KEY_MOTION_CHARACTER_EPOCH = "fitness_motion_character_epoch"
@@ -161,6 +196,11 @@ internal class MotionTrackingStore(context: Context) {
         private const val KEY_REJECTED_WEAK = "fitness_motion_rejected_weak_cycle"
         private const val KEY_REJECTED_ROTATIONAL = "fitness_motion_rejected_rotational"
         private const val KEY_REJECTED_NO_VALLEY = "fitness_motion_rejected_no_valley"
+        private const val KEY_OXFORD_STEPS = "fitness_motion_oxford_steps"
+        private const val KEY_OXFORD_PEAK_CANDIDATES = "fitness_motion_oxford_peak_candidates"
+        private const val KEY_OXFORD_SCORE_SAMPLES = "fitness_motion_oxford_score_samples"
+        private const val KEY_OXFORD_DETECTOR_MEAN = "fitness_motion_oxford_detector_mean"
+        private const val KEY_OXFORD_DETECTOR_STD = "fitness_motion_oxford_detector_std"
         private const val KEY_SERVICE_RUNNING = "fitness_motion_service_running"
         private const val KEY_LAST_EVENT_MS = "fitness_motion_last_event_ms"
         private const val KEY_SENSOR_SUMMARY = "fitness_motion_sensor_summary"
