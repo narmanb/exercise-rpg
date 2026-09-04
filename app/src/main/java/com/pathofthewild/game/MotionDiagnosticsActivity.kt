@@ -53,10 +53,21 @@ class MotionDiagnosticsActivity : ComponentActivity() {
         content.removeAllViews()
 
         addText("Custom Motion Tracker", 26f, true)
-        addText("SHADOW MODE — these steps are diagnostic only and do not grant RPG rewards yet.", 16f, true)
+        addText("SHADOW MODE — neither research counter grants RPG rewards.", 16f, true)
         addSpacer()
         addLine("Foreground service", if (snapshot.serviceRunning) "Running" else "Stopped")
-        addLine("Custom confirmed steps", snapshot.confirmedStepCount.toString())
+
+        addText("Side-by-side step counts", 20f, true)
+        addLine("Path custom confirmed steps", snapshot.confirmedStepCount.toString())
+        addLine("Oxford research steps", snapshot.oxfordStepCount.toString())
+        addText(
+            "Oxford research = orientation-independent acceleration-magnitude Windowed Peak Detection, adapted from the MIT-licensed University of Oxford step-counter project.",
+            14f,
+            false
+        )
+        addSpacer(8)
+
+        addText("Path custom detector", 18f, true)
         addLine("Raw peak candidates", snapshot.rawCandidateCount.toString())
         addLine("Rejected candidates — total", snapshot.rejectedCandidateCount.toString())
         addLine("↳ rotational / phone-swing", snapshot.rejectedRotationalCount.toString())
@@ -66,15 +77,23 @@ class MotionDiagnosticsActivity : ComponentActivity() {
         addLine("↳ too fast", snapshot.rejectedTooFastCount.toString())
         addLine("Rotation-like candidates", snapshot.suspiciousCandidateCount.toString())
         addLine("Sensor samples processed", snapshot.sampleCount.toString())
+
         addSpacer(8)
-        addText("Last completed candidate", 18f, true)
+        addText("Oxford research detector", 18f, true)
+        addLine("Peak-score candidates", snapshot.oxfordPeakCandidateCount.toString())
+        addLine("Scored 100 Hz samples", snapshot.oxfordScoreSampleCount.toString())
+        addLine("Adaptive score mean", String.format(Locale.US, "%.3f", snapshot.oxfordDetectorMean))
+        addLine("Adaptive score std dev", String.format(Locale.US, "%.3f", snapshot.oxfordDetectorStd))
+
+        addSpacer(8)
+        addText("Last Path custom candidate", 18f, true)
         addLine("Peak→valley amplitude", String.format(Locale.US, "%.2f m/s²", snapshot.lastCycleAmplitude))
         addLine("Peak cycle jerk", String.format(Locale.US, "%.1f m/s³", snapshot.lastCycleJerk))
         addLine("Peak cycle gyro", String.format(Locale.US, "%.2f rad/s", snapshot.lastCycleGyro))
         addLine("Vertical-motion fraction", String.format(Locale.US, "%.2f", snapshot.lastVerticalFraction))
         addLine("Interval from previous plausible candidate", if (snapshot.lastCandidateIntervalMs > 0L) "${snapshot.lastCandidateIntervalMs} ms" else "—")
         addSpacer(8)
-        addText("Adaptive walking model", 18f, true)
+        addText("Adaptive Path walking model", 18f, true)
         addLine("Accepted cycle amplitude mean", String.format(Locale.US, "%.2f m/s²", snapshot.acceptedAmplitudeMean))
         addLine(
             "Accepted cadence mean",
@@ -87,7 +106,7 @@ class MotionDiagnosticsActivity : ComponentActivity() {
         )
         addSpacer()
         addText(
-            "For a clean test, tap Reset shadow test first. Then walk exactly 20 normal steps, screenshot; stand still and swing the phone back/forth 20 times, screenshot; then turn the screen off and walk exactly 20 steps, screenshot again.",
+            "Clean comparison test: tap Reset shadow test. Walk exactly 20 normal steps with the phone at your side and screenshot. Then stand still and swing that arm back/forth 20 times and screenshot. Then turn the screen off, walk exactly 20 more normal steps with the phone at your side, turn it back on, and screenshot again. We care most about how each of the two step counts changes between screenshots.",
             16f,
             false
         )
