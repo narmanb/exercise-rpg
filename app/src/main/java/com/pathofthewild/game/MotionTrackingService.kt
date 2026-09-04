@@ -27,6 +27,7 @@ import kotlin.math.sqrt
 class MotionTrackingService : Service(), SensorEventListener {
     private lateinit var sensorManager: SensorManager
     private lateinit var store: MotionTrackingStore
+    private lateinit var oxfordCounter: OxfordShadowStepCounter
     private var accelerometer: Sensor? = null
     private var gravitySensor: Sensor? = null
     private var gyroscope: Sensor? = null
@@ -54,6 +55,12 @@ class MotionTrackingService : Service(), SensorEventListener {
         }
         store.ensureCharacter(epoch)
         state = store.initialPedometerState()
+        val oxfordStart = store.initialOxfordSnapshot()
+        oxfordCounter = OxfordShadowStepCounter(
+            initialStepCount = oxfordStart.stepCount,
+            initialPeakCandidateCount = oxfordStart.peakCandidateCount,
+            initialScoreSampleCount = oxfordStart.scoreSampleCount
+        )
         lastCandidateCount = state.rawCandidateCount
 
         createNotificationChannel()
@@ -70,6 +77,7 @@ class MotionTrackingService : Service(), SensorEventListener {
             append(if (gravitySensor != null) "gravity" else "gravity fallback")
             append(" · ")
             append(if (gyroscope != null) "gyro" else "no gyro")
+            append(" · Oxford WPD shadow")
         }
         store.setServiceState(running = true, sensorSummary = summary)
         registerSensors()
@@ -92,7 +100,9 @@ class MotionTrackingService : Service(), SensorEventListener {
     override fun onDestroy() {
         if (::sensorManager.isInitialized) sensorManager.unregisterListener(this)
         if (::store.isInitialized) {
-            store.savePedometerState(state, System.currentTimeMillis())
+            if (::oxfordCounter.isInitialized) {
+                store.savePedometerState(state, oxfordCounter.snapshot(), System.currentTimeMillis())
+            }
             store.setServiceState(running = false)
         }
         super.onDestroy()
@@ -125,6 +135,10 @@ class MotionTrackingService : Service(), SensorEventListener {
         val ax = event.values[0]
         val ay = event.values[1]
         val az = event.values[2]
+
+        // Research comparator: same raw accelerometer event, independent algorithm. It never feeds
+        // the reward ledger; its only purpose is target-device comparison in diagnostics.
+        val oxfordResult = oxfordCounter.observe(event.timestamp, ax, ay, az)
 
         val gravityAlpha = 0.02f
         fallbackGravityX += gravityAlpha * (ax - fallbackGravityX)
@@ -160,8 +174,14 @@ class MotionTrackingService : Service(), SensorEventListener {
 
         val candidateChanged = state.rawCandidateCount != lastCandidateCount
         val periodicPersist = lastPersistTimestampNs == 0L || event.timestamp - lastPersistTimestampNs >= 2_000_000_000L
-        if (candidateChanged || result.newlyConfirmedSteps > 0L || result.rejection != null || periodicPersist) {
-            store.savePedometerState(state, System.currentTimeMillis())
+        if (
+            candidateChanged ||
+            result.newlyConfirmedSteps > 0L ||
+            result.rejection != null ||
+            oxfordResult.newlyConfirmedSteps > 0L ||
+            periodicPersist
+        ) {
+            store.savePedometerState(state, oxfordCounter.snapshot(), System.currentTimeMillis())
             lastPersistTimestampNs = event.timestamp
             lastCandidateCount = state.rawCandidateCount
         }
@@ -175,6 +195,7 @@ class MotionTrackingService : Service(), SensorEventListener {
             return
         }
         // 25 Hz resolves normal walking cadence while using substantially less power than game-rate sampling.
+        // The Oxford comparator internally interpolates this same stream to its original 100 Hz processing grid.
         val samplingUs = 40_000
         sensorManager.registerListener(this, accel, samplingUs)
         gravitySensor?.let { sensorManager.registerListener(this, it, samplingUs) }
@@ -241,19 +262,22 @@ class MotionTrackingService : Service(), SensorEventListener {
 
     private fun resetShadowTracking() {
         state = MotionPedometerState()
+        oxfordCounter = OxfordShadowStepCounter()
         lastCandidateCount = 0L
         lastPersistTimestampNs = 0L
         if (::store.isInitialized) {
             store.resetShadowCounters()
             store.setServiceState(running = true)
-            store.savePedometerState(state, System.currentTimeMillis())
+            store.savePedometerState(state, oxfordCounter.snapshot(), System.currentTimeMillis())
         }
     }
 
     private fun stopTracking() {
         if (::sensorManager.isInitialized) sensorManager.unregisterListener(this)
         if (::store.isInitialized) {
-            store.savePedometerState(state, System.currentTimeMillis())
+            if (::oxfordCounter.isInitialized) {
+                store.savePedometerState(state, oxfordCounter.snapshot(), System.currentTimeMillis())
+            }
             store.setServiceState(running = false)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(STOP_FOREGROUND_REMOVE)
