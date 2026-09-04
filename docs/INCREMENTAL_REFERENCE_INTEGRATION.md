@@ -108,6 +108,8 @@ Goals:
 - define a canonical validated-exercise event boundary;
 - keep `FitnessRewardEngine` independent of source type.
 
+This stage is intentionally additive and behavior-neutral so it can be reviewed and tested independently before any live fitness source is moved behind the new boundary.
+
 ### Stage 2 — Reconciliation implementation
 
 Generalize the current step reconciliation behind the new contracts while preserving current save keys and behavior. Add adapters for Health Connect, platform counter/detector, and custom motion. Add tests for overlapping sources, reopen, repeated sync, reboot, source switching, delayed Health Connect, and provider corrections.
